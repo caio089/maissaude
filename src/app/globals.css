@@ -1,0 +1,141 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-brand: var(--brand);
+  --color-teal: var(--teal);
+  --color-teal-foreground: var(--teal-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-surface: var(--surface);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: #f3f6f7;
+  --foreground: #122830;
+  --card: #ffffff;
+  --card-foreground: #122830;
+  --popover: #ffffff;
+  --popover-foreground: #122830;
+  --primary: #0d3b4c;
+  --primary-foreground: #f4fbfb;
+  --secondary: #e6eef1;
+  --secondary-foreground: #163640;
+  --muted: #eef3f5;
+  --muted-foreground: #5d727c;
+  --accent: #e5f3f2;
+  --accent-foreground: #0d3b4c;
+  --destructive: #b42318;
+  --border: #d5e2e6;
+  --input: #c9d8de;
+  --ring: #127e7a;
+  --chart-1: #0d3b4c;
+  --chart-2: #127e7a;
+  --chart-3: #8a5a44;
+  --chart-4: #c4a574;
+  --chart-5: #8aa4ad;
+  --radius: 0.9rem;
+  --sidebar: #0c2f3d;
+  --sidebar-foreground: #e7f2f4;
+  --sidebar-primary: #7ed9d2;
+  --sidebar-primary-foreground: #062028;
+  --sidebar-accent: #16485a;
+  --sidebar-accent-foreground: #f4fbfb;
+  --sidebar-border: #1e4d60;
+  --sidebar-ring: #7ed9d2;
+  --brand: #0d3b4c;
+  --teal: #127e7a;
+  --teal-foreground: #ffffff;
+  --success: #0f7a56;
+  --warning: #a16207;
+  --info: #1d6f8a;
+  --surface: #f7fafb;
+  color-scheme: light;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+.panel {
+  border-radius: var(--radius-xl);
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+  box-shadow: 0 18px 40px -32px rgba(13, 59, 76, 0.55);
+}
+
+.phone-scroll {
+  scrollbar-width: none;
+}
+
+.phone-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

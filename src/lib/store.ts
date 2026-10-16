@@ -14,6 +14,7 @@ import {
   type AppointmentInput,
   type BookingDraft,
   type CheckoutReceipt,
+  type MobileAccount,
   type DashboardPeriod,
   type DemoData,
   type MobileFilters,
@@ -27,6 +28,8 @@ export interface DemoStore {
   data: DemoData
   booking: BookingDraft
   lastCheckout: CheckoutReceipt | null
+  mobileAccounts: MobileAccount[]
+  mobileSessionPatientId: string | null
   dashboardPeriod: DashboardPeriod
   mobileCity: string
   agendaView: AgendaView
@@ -50,6 +53,10 @@ export interface DemoStore {
   patchBooking: (patch: Partial<BookingDraft>) => void
   startBooking: (professionalId: string) => void
   clearBooking: () => void
+  registerMobileAccount: (input: { name: string; cpf: string; passwordHash: string }) => { ok: true } | { ok: false; message: string }
+  loginMobileAccount: (input: { cpf: string; passwordHash: string }) => { ok: true } | { ok: false; message: string }
+  logoutMobileAccount: () => void
+  clearCheckout: () => void
   markNotificationsRead: () => void
   createPatient: (input: PatientInput) => string
   updatePatient: (id: string, input: PatientInput) => void
@@ -85,6 +92,8 @@ function createInitialState() {
     data: createSeed(new Date()),
     booking: emptyBooking(),
     lastCheckout: null as CheckoutReceipt | null,
+    mobileAccounts: [] as MobileAccount[],
+    mobileSessionPatientId: null as string | null,
     dashboardPeriod: "30d" as DashboardPeriod,
     mobileCity: "Teresina - PI",
     agendaView: "week" as AgendaView,
@@ -159,6 +168,64 @@ export const useDemoStore = create<DemoStore>()(
           lastCheckout: null,
         }),
       clearBooking: () => set({ booking: emptyBooking() }),
+      registerMobileAccount: ({ name, cpf, passwordHash }) => {
+        const normalizedCpf = cpf.trim()
+        const state = get()
+        if (state.mobileAccounts.some((account) => account.cpf === normalizedCpf)) {
+          return { ok: false, message: "Este CPF já tem conta nesta demonstração. Entre com a senha." }
+        }
+        const existing = state.data.patients.find((patient) => patient.cpf === normalizedCpf)
+        if (existing) {
+          set({
+            mobileAccounts: [...state.mobileAccounts, { cpf: normalizedCpf, patientId: existing.id, passwordHash }],
+            mobileSessionPatientId: existing.id,
+            lastCheckout: null,
+            booking: emptyBooking(),
+            data: { ...state.data, currentPatientId: existing.id },
+          })
+          return { ok: true }
+        }
+        const id = createId("pat")
+        const contact = nextDemoContact(state.data.patients)
+        const patient = {
+          id,
+          name: name.trim(),
+          cpf: normalizedCpf,
+          phone: contact.phone,
+          email: contact.email,
+          birthDate: "1990-01-15",
+          gender: "Não informado",
+          address: "Endereço fictício informado no aplicativo",
+          city: state.mobileCity,
+          status: "active" as const,
+          notes: "Conta criada no aplicativo de demonstração.",
+          createdAt: formatISO(new Date()),
+          reminderEnabled: true,
+        }
+        set({
+          mobileAccounts: [...state.mobileAccounts, { cpf: normalizedCpf, patientId: id, passwordHash }],
+          mobileSessionPatientId: id,
+          lastCheckout: null,
+          booking: emptyBooking(),
+          data: { ...state.data, currentPatientId: id, patients: [patient, ...state.data.patients] },
+        })
+        return { ok: true }
+      },
+      loginMobileAccount: ({ cpf, passwordHash }) => {
+        const account = get().mobileAccounts.find((item) => item.cpf === cpf.trim())
+        if (!account || account.passwordHash !== passwordHash) {
+          return { ok: false, message: "CPF ou senha de demonstração não conferem." }
+        }
+        set((state) => ({
+          mobileSessionPatientId: account.patientId,
+          lastCheckout: null,
+          booking: emptyBooking(),
+          data: { ...state.data, currentPatientId: account.patientId },
+        }))
+        return { ok: true }
+      },
+      logoutMobileAccount: () => set({ mobileSessionPatientId: null, booking: emptyBooking(), lastCheckout: null }),
+      clearCheckout: () => set({ lastCheckout: null, booking: emptyBooking() }),
       markNotificationsRead: () =>
         set((state) => ({
           data: {
@@ -546,6 +613,18 @@ export const useDemoStore = create<DemoStore>()(
     },
   ),
 )
+
+function nextDemoContact(patients: Array<{ phone: string; email: string }>) {
+  for (let sequence = 26; sequence < 900; sequence += 1) {
+    const code = String(sequence).padStart(3, "0")
+    const phone = `(86) 99000-${code}0`
+    const email = `conta.${code}@demonstracao.demo`
+    if (!patients.some((patient) => patient.phone === phone || patient.email.toLowerCase() === email)) {
+      return { phone, email }
+    }
+  }
+  return { phone: "(86) 99000-9000", email: "conta.extra@demonstracao.demo" }
+}
 
 let syncClients = 0
 let stopSync: (() => void) | null = null

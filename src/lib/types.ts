@@ -175,6 +175,12 @@ export interface BookingDraft {
   rescheduleAppointmentId: string | null
 }
 
+export interface MobileAccount {
+  cpf: string
+  patientId: string
+  passwordHash: string
+}
+
 export interface CheckoutReceipt {
   reference: string
   appointmentId: string | null
@@ -248,6 +254,6 @@ export const DEMO_CITIES = [
   "Picos - PI",
 ] as const
 
-export const CLINIC_NAME = "Saúde Prime"
-export const STORAGE_KEY = "saude-prime-demo-v1"
-export const CHANNEL_NAME = "saude-prime-demo"
+export const CLINIC_NAME = "CuidarSaude"
+export const STORAGE_KEY = "cuidar-saude-demo-v1"
+export const CHANNEL_NAME = "cuidar-saude-demo"

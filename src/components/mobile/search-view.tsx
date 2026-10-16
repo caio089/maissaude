@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch"
 import { formatMoney } from "@/lib/format"
 import { hasAvailabilitySoon } from "@/lib/schedule"
 import { useDemoStore } from "@/lib/store"
-import { SPECIALTIES, SPECIALTY_LABEL, type Specialty } from "@/lib/types"
+import { CLINIC_NAME, SPECIALTIES, SPECIALTY_LABEL, type Specialty } from "@/lib/types"
 
 export function MobileSearch() {
   const data = useDemoStore((state) => state.data)
@@ -25,7 +25,7 @@ export function MobileSearch() {
   const results = data.professionals.filter((professional) => {
     if (!professional.active) return false
     const query = filters.query.trim().toLowerCase()
-    const haystack = `${professional.name} ${SPECIALTY_LABEL[professional.specialty]} Saúde Prime`.toLowerCase()
+    const haystack = `${professional.name} ${SPECIALTY_LABEL[professional.specialty]} ${data.clinic.name}`.toLowerCase()
     if (query && !haystack.includes(query)) return false
     if (filters.specialty !== "all" && professional.specialty !== filters.specialty) return false
     if (filters.modality !== "all" && !professional.services.some((service) => service.modality === filters.modality)) return false
@@ -60,7 +60,7 @@ export function MobileSearch() {
             <Portrait seed={professional.avatarSeed} name={professional.name} className="size-16" />
             <span className="min-w-0">
               <span className="block font-medium">{professional.name}</span>
-              <span className="block text-sm text-muted-foreground">{SPECIALTY_LABEL[professional.specialty]} · Saúde Prime</span>
+              <span className="block text-sm text-muted-foreground">{SPECIALTY_LABEL[professional.specialty]} · {CLINIC_NAME}</span>
               <span className="mt-1 block text-sm">{formatMoney(professional.price)} · nota demo {professional.rating.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
             </span>
           </Link>

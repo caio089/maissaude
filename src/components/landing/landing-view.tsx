@@ -32,7 +32,7 @@ export function LandingView() {
               A clínica organizada. O paciente no centro.
             </h1>
             <p className="mt-5 max-w-lg text-lg leading-8 text-muted-foreground">
-              Saúde Prime é uma demonstração navegável de gestão e agendamento. Os dados, prontuários e pagamentos são fictícios e ficam só neste navegador.
+              CuidarSaude é uma demonstração navegável de gestão e agendamento. Os dados e pagamentos são fictícios e ficam só neste navegador.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button asChild className="h-12 px-5">
@@ -82,7 +82,7 @@ export function LandingView() {
             Apresente em duas janelas do mesmo navegador para ver a agenda atualizar.
           </div>
           <Button asChild variant="outline" className="bg-white">
-            <Link href="/demo">Ver roteiro de 8 passos</Link>
+            <Link href="/demo">Ver roteiro de 6 passos</Link>
           </Button>
         </section>
       </FadeIn>

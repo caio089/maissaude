@@ -1,6 +1,6 @@
-# Saúde Prime
+# CuidarSaude
 
-Protótipo comercial de gestão de clínicas e agendamento. Todos os pacientes, pagamentos e prontuários são fictícios e ficam no navegador.
+Protótipo comercial de gestão de clínicas e agendamento. Todos os pacientes e pagamentos são fictícios e ficam no navegador.
 
 ```bash
 npm install

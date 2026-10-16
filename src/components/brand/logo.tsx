@@ -8,7 +8,7 @@ export function Logo({ light = false, compact = false }: { light?: boolean; comp
       </svg>
       {compact ? null : (
         <span className="leading-tight">
-          <span className="block text-sm font-semibold tracking-tight">Saúde Prime</span>
+          <span className="block text-sm font-semibold tracking-tight">CuidarSaude</span>
           <span className={`block text-[11px] ${light ? "text-white/70" : "text-muted-foreground"}`}>Demonstração</span>
         </span>
       )}

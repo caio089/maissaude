@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useState } from "react"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { AppointmentConfirmation } from "@/components/mobile/appointment-confirmation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatDate, formatMoney } from "@/lib/format"
@@ -16,6 +17,7 @@ export function PaymentView() {
   const booking = useDemoStore((state) => state.booking)
   const lastCheckout = useDemoStore((state) => state.lastCheckout)
   const simulateCheckout = useDemoStore((state) => state.simulateCheckout)
+  const clearCheckout = useDemoStore((state) => state.clearCheckout)
   const [method, setMethod] = useState<PaymentMethod>("pix")
   const [processing, setProcessing] = useState<PaymentMethod | "wait" | null>(null)
   const [card, setCard] = useState({ number: "", name: "", expiry: "", cvv: "" })
@@ -40,22 +42,7 @@ export function PaymentView() {
   }
 
   if (lastCheckout?.outcome === "approved" && !booking.professionalId) {
-    return (
-      <div className="px-5 pt-8 pb-6">
-        <p className="text-xs font-medium uppercase tracking-wide text-teal">Demonstração</p>
-        <h1 className="mt-2 text-3xl font-semibold">Consulta confirmada</h1>
-        <p className="mt-2 text-sm text-muted-foreground">A reserva já está na sua lista e na agenda da clínica, neste navegador.</p>
-        <div className="mt-5 rounded-3xl bg-brand p-5 text-white">
-          <p className="text-xs text-white/70">Identificador fictício</p>
-          <p className="mt-2 text-2xl font-semibold tracking-wide">{lastCheckout.reference}</p>
-          <p className="mt-3 text-sm">{formatMoney(lastCheckout.amount)} · {lastCheckout.method === "pix" ? "Pix simulado" : "Cartão simulado"}</p>
-        </div>
-        <div className="mt-4 grid gap-2">
-          <Button asChild className="h-12"><Link href="/mobile/consultas">Ver minhas consultas</Link></Button>
-          <Button asChild variant="outline" className="h-12"><Link href="/desktop/agenda">Abrir agenda da clínica</Link></Button>
-        </div>
-      </div>
-    )
+    return <AppointmentConfirmation onAnother={clearCheckout} />
   }
 
   if (!ready || !professional || !service || !booking.date || !booking.time) {

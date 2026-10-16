@@ -32,7 +32,7 @@ export function MobileHome() {
   return (
     <div className="space-y-6 px-5 pt-5 pb-6">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-wide text-teal">Saúde Prime · demo</p>
+        <p className="text-xs font-medium tracking-wide text-teal">{data.clinic.name} · demo</p>
         <button type="button" onClick={() => setCityOpen(true)} className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs ring-1 ring-border">
           <MapPin className="size-3" /> {city}
         </button>

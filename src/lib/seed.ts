@@ -1,6 +1,6 @@
 import { addDays, addMinutes, formatISO } from "date-fns"
 import { combineDateAndTime, toDateKey } from "@/lib/format"
-import { SCHEMA_VERSION, SPECIALTY_LABEL, type AppointmentStatus, type DemoData, type Patient, type Professional, type Service, type Specialty } from "@/lib/types"
+import { CLINIC_NAME, SCHEMA_VERSION, SPECIALTY_LABEL, type AppointmentStatus, type DemoData, type Patient, type Professional, type Service, type Specialty } from "@/lib/types"
 
 const CLINIC_ADDRESS = "Av. da Demonstração, 1500, sala 3, Centro — Teresina - PI"
 
@@ -27,7 +27,7 @@ const PROFESSIONAL_DRAFTS: ProfessionalDraft[] = [
     workDays: [1, 2, 3, 4, 5],
     startHour: "08:00",
     endHour: "18:00",
-    bio: "Perfil fictício de clínica geral na unidade demonstrativa Saúde Prime, em Teresina.",
+    bio: "Perfil fictício de clínica geral na unidade demonstrativa CuidarSaude, em Teresina.",
     tele: true,
   },
   {
@@ -330,7 +330,7 @@ export function createSeed(now = new Date()): DemoData {
       endsAt: formatISO(endsAt),
       status: item.status,
       modality: service.modality,
-      notes: "Consulta fictícia do roteiro comercial Saúde Prime.",
+      notes: "Consulta fictícia do roteiro comercial CuidarSaude.",
       createdAt: formatISO(addDays(startsAt, -2)),
       origin: "seed",
       paymentId,
@@ -401,8 +401,8 @@ export function createSeed(now = new Date()): DemoData {
     schemaVersion: SCHEMA_VERSION,
     anchorDate,
     clinic: {
-      name: "Saúde Prime",
-      legalName: "Saúde Prime Demonstração Ltda.",
+      name: CLINIC_NAME,
+      legalName: "CuidarSaude Demonstração Ltda.",
       city: "Teresina - PI",
       address: CLINIC_ADDRESS,
       phone: "(86) 90000-0100",

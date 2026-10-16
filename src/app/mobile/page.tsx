@@ -1,8 +1,8 @@
 import type { Metadata } from "next"
-import { MobileHome } from "@/components/mobile/home-view"
+import { MobileJourney } from "@/components/mobile/journey-view"
 
-export const metadata: Metadata = { title: "Paciente" }
+export const metadata: Metadata = { title: "Agendar" }
 
 export default function MobileHomePage() {
-  return <MobileHome />
+  return <MobileJourney />
 }

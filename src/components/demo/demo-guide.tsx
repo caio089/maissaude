@@ -11,12 +11,10 @@ import { useDemoStore } from "@/lib/store"
 const STEPS = [
   { title: "Abrir o dashboard", text: "Mostre consultas de hoje, receita e ocupação. Troque o período para os números se atualizarem.", href: "/desktop", label: "Abrir painel" },
   { title: "Agenda e financeiro", text: "Percorra a semana, abra uma consulta e depois o financeiro com a marca de simulação.", href: "/desktop/agenda", label: "Abrir agenda" },
-  { title: "Aplicativo do paciente", text: "A paciente de demonstração é Helena Martins, em Teresina.", href: "/mobile", label: "Abrir app" },
-  { title: "Buscar profissional", text: "Filtre por especialidade, presencial ou teleconsulta demonstrativa.", href: "/mobile/buscar", label: "Buscar" },
-  { title: "Escolher a consulta", text: "Abra um perfil, escolha serviço, data e um horário que ainda esteja livre.", href: "/mobile/agendamento", label: "Agendar" },
-  { title: "Simular o pagamento", text: "Use o QR ilustrativo ou o cartão 0000 0000 0000 0000, validade 12/30 e CVV 000.", href: "/mobile/pagamento", label: "Pagamento" },
-  { title: "Voltar à clínica", text: "A consulta nova aparece na agenda e o valor recebido entra no financeiro.", href: "/desktop/agenda", label: "Ver na agenda" },
-  { title: "Prontuário", text: "Abra um prontuário fictício, edite a anotação e salve neste navegador.", href: "/desktop/prontuarios", label: "Abrir prontuário" },
+  { title: "Aplicativo do paciente", text: "Abra o app e crie a conta com nome, CPF fictício começando em 900 e uma senha de demonstração.", href: "/mobile", label: "Abrir app" },
+  { title: "Especialidade e médico", text: "Escolha a especialidade e, em seguida, o profissional.", href: "/mobile", label: "Continuar no app" },
+  { title: "Dia, hora e pagamento", text: "Escolha um horário livre e simule o pagamento aprovado. Use o cartão 0000 0000 0000 0000, validade 12/30 e CVV 000 se for cartão.", href: "/mobile", label: "Agendar" },
+  { title: "WhatsApp e painel", text: "A tela final abre o WhatsApp com a confirmação. A consulta e o pagamento já estão na agenda e no financeiro.", href: "/desktop/agenda", label: "Ver na agenda" },
 ]
 
 export function DemoGuide() {
@@ -31,7 +29,7 @@ export function DemoGuide() {
       </header>
       <main className="mx-auto max-w-3xl px-6 pb-16">
         <p className="text-sm font-medium text-teal">Roteiro comercial</p>
-        <h1 className="mt-2 text-4xl font-semibold tracking-tight">Oito passos para a apresentação</h1>
+        <h1 className="mt-2 text-4xl font-semibold tracking-tight">Seis passos para a apresentação</h1>
         <p className="mt-3 text-muted-foreground">
           Use duas janelas do mesmo navegador, neste computador. A sincronização acontece pelo armazenamento local e não funciona entre celulares ou computadores diferentes.
         </p>

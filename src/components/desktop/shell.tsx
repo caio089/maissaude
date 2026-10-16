@@ -6,7 +6,6 @@ import { useMemo, useState } from "react"
 import {
   Bell,
   CalendarDays,
-  FileText,
   LayoutDashboard,
   Menu,
   Search,
@@ -43,7 +42,6 @@ const NAV = [
   { href: "/desktop", label: "Painel", icon: LayoutDashboard },
   { href: "/desktop/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/desktop/pacientes", label: "Pacientes", icon: Users },
-  { href: "/desktop/prontuarios", label: "Prontuários", icon: FileText },
   { href: "/desktop/financeiro", label: "Financeiro", icon: Wallet },
   { href: "/desktop/profissionais", label: "Profissionais", icon: Stethoscope },
 ]

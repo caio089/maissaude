@@ -18,6 +18,7 @@ export function MobileProfile() {
   const setCity = useDemoStore((state) => state.setMobileCity)
   const updateCurrentPatient = useDemoStore((state) => state.updateCurrentPatient)
   const resetDemo = useDemoStore((state) => state.resetDemo)
+  const logoutMobileAccount = useDemoStore((state) => state.logoutMobileAccount)
   const patient = data.patients.find((item) => item.id === data.currentPatientId)
   const [name, setName] = useState(patient?.name ?? "")
   const [phone, setPhone] = useState(patient?.phone ?? "")
@@ -94,6 +95,7 @@ export function MobileProfile() {
           </article>
         ))}
       </section>
+      <Button type="button" variant="outline" className="w-full" onClick={() => { logoutMobileAccount(); toast.success("Conta encerrada nesta demonstração.") }}>Sair da conta</Button>
       <Button type="button" variant="destructive" className="w-full" onClick={() => setConfirm(true)}>Sair do modo demonstração</Button>
       <Button asChild variant="outline" className="w-full"><Link href="/desktop">Abrir painel da clínica</Link></Button>
       <ConfirmDialog

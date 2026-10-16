@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { addDays, isSameDay, startOfWeek } from "date-fns"
-import { Ban, ChevronLeft, ChevronRight, Plus } from "lucide-react"
+import { Ban, ChevronLeft, ChevronRight, Plus, UserPlus } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { FadeIn } from "@/components/shared/fade-in"
@@ -21,10 +21,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { emptyPatientForm, PatientFields, patientFormErrors } from "@/components/desktop/patient-form"
 import { formatDate, parseDateKey, timeKey, toDateKey, WEEKDAY_SHORT } from "@/lib/format"
 import { availableSlots } from "@/lib/schedule"
 import { useDemoStore } from "@/lib/store"
-import { SPECIALTIES, SPECIALTY_LABEL, type AgendaView, type Appointment, type Professional } from "@/lib/types"
+import { SPECIALTIES, SPECIALTY_LABEL, type AgendaView, type Appointment, type PatientInput, type Professional } from "@/lib/types"
+import { hasErrors } from "@/lib/validation"
 
 const PX_PER_MIN = 1.1
 const DAY_START = 8 * 60
@@ -43,6 +45,7 @@ export function AgendaView() {
   const setSpecialty = useDemoStore((state) => state.setAgendaSpecialty)
   const setPatientFocusId = useDemoStore((state) => state.setPatientFocusId)
   const createAppointment = useDemoStore((state) => state.createAppointment)
+  const createPatient = useDemoStore((state) => state.createPatient)
   const rescheduleAppointment = useDemoStore((state) => state.rescheduleAppointment)
   const setAppointmentStatus = useDemoStore((state) => state.setAppointmentStatus)
   const cancelAppointment = useDemoStore((state) => state.cancelAppointment)
@@ -52,6 +55,9 @@ export function AgendaView() {
   const selected = storedDate ? parseDateKey(storedDate) : new Date()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [registering, setRegistering] = useState(false)
+  const [patientForm, setPatientForm] = useState<PatientInput>(() => emptyPatientForm(data.patients))
+  const [patientErrors, setPatientErrors] = useState<Partial<Record<keyof PatientInput, string>>>({})
   const [blockOpen, setBlockOpen] = useState(false)
   const [cancelId, setCancelId] = useState<string | null>(null)
   const [draft, setDraft] = useState({
@@ -111,7 +117,33 @@ export function AgendaView() {
       time: prefill?.time ?? "09:20",
       notes: "",
     })
+    setRegistering(false)
+    setPatientForm(emptyPatientForm(data.patients))
+    setPatientErrors({})
     setCreateOpen(true)
+  }
+
+  function saveAppointment() {
+    let patientId = draft.patientId
+    if (registering) {
+      const nextErrors = patientFormErrors(patientForm, data.patients)
+      setPatientErrors(nextErrors)
+      if (hasErrors(nextErrors)) return
+      patientId = createPatient(patientForm)
+    }
+    const result = createAppointment({ ...draft, patientId })
+    if (!result.ok) {
+      if (registering) {
+        setDraft((current) => ({ ...current, patientId }))
+        setRegistering(false)
+      }
+      toast.error(result.message)
+      return
+    }
+    setCreateOpen(false)
+    setRegistering(false)
+    setAgendaDate(draft.date)
+    toast.success(registering ? "Paciente cadastrado e consulta agendada." : "Agendamento fictício criado.")
   }
 
   const draftProfessional = data.professionals.find((item) => item.id === draft.professionalId)
@@ -249,23 +281,48 @@ export function AgendaView() {
         </div>
       </section>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setRegistering(false) }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Novo agendamento</DialogTitle>
-            <DialogDescription>A consulta e o pagamento pendente ficam salvos apenas nesta demonstração.</DialogDescription>
+            <DialogDescription>Escolha um paciente já cadastrado ou registre um cadastro fictício antes de confirmar a consulta.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
-            <Field label="Paciente" htmlFor="agenda-patient">
-              <Select value={draft.patientId} onValueChange={(value) => setDraft((current) => ({ ...current, patientId: value }))}>
-                <SelectTrigger id="agenda-patient" className="h-10 w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {data.patients.filter((item) => item.status === "active").map((item) => (
-                    <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+            {registering ? (
+              <div className="rounded-2xl bg-muted/60 p-3">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Novo paciente</p>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setRegistering(false)}>Usar cadastro existente</Button>
+                </div>
+                <PatientFields idPrefix="agenda-new" form={patientForm} errors={patientErrors} onChange={setPatientForm} />
+              </div>
+            ) : (
+              <Field label="Paciente" htmlFor="agenda-patient">
+                <div className="flex gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Select value={draft.patientId} onValueChange={(value) => setDraft((current) => ({ ...current, patientId: value }))}>
+                      <SelectTrigger id="agenda-patient" className="h-10 w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {data.patients.filter((item) => item.status === "active").map((item) => (
+                          <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setPatientForm(emptyPatientForm(data.patients))
+                      setPatientErrors({})
+                      setRegistering(true)
+                    }}
+                  >
+                    <UserPlus /> Cadastrar
+                  </Button>
+                </div>
+              </Field>
+            )}
             <Field label="Profissional">
               <Select
                 value={draft.professionalId}
@@ -309,20 +366,8 @@ export function AgendaView() {
             </Field>
           </div>
           <DialogFooter>
-            <Button
-              type="button"
-              onClick={() => {
-                const result = createAppointment(draft)
-                if (!result.ok) {
-                  toast.error(result.message)
-                  return
-                }
-                setCreateOpen(false)
-                setAgendaDate(draft.date)
-                toast.success("Agendamento fictício criado.")
-              }}
-            >
-              Salvar agendamento
+            <Button type="button" onClick={saveAppointment}>
+              {registering ? "Cadastrar e agendar" : "Salvar agendamento"}
             </Button>
           </DialogFooter>
         </DialogContent>

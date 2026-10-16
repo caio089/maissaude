@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Saúde Prime",
-    template: "%s · Saúde Prime",
+    default: "CuidarSaude",
+    template: "%s · CuidarSaude",
   },
   description: "Demonstração comercial de gestão de clínicas e agendamento. Dados e pagamentos fictícios.",
 }

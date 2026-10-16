@@ -1,57 +1,39 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { Plus, Search, Users } from "lucide-react"
 import { toast } from "sonner"
 import { FadeIn } from "@/components/shared/fade-in"
-import { Field } from "@/components/shared/field"
 import { EmptyState } from "@/components/shared/empty-state"
 import { Portrait } from "@/components/shared/portrait"
 import { PaymentBadge, StatusBadge } from "@/components/shared/status-badge"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
+import { emptyPatientForm, PatientForm, patientFormErrors } from "@/components/desktop/patient-form"
 import { formatDate, formatMoney } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
 import type { Patient, PatientInput, PatientStatus } from "@/lib/types"
-import { hasErrors, validatePatientInput } from "@/lib/validation"
+import { hasErrors } from "@/lib/validation"
 
 const PAGE_SIZE = 8
 
-const emptyForm = (): PatientInput => ({
-  name: "",
-  cpf: "900.100.099-10",
-  phone: "(86) 99000-0000",
-  email: "novo.paciente@demonstracao.demo",
-  birthDate: "1990-01-15",
-  gender: "Feminino",
-  address: "Rua da Demonstração, 200",
-  city: "Teresina - PI",
-  status: "active",
-  notes: "Cadastro fictício criado durante a demonstração.",
-})
-
 export function PatientsView() {
-  const router = useRouter()
   const data = useDemoStore((state) => state.data)
   const search = useDemoStore((state) => state.patientSearch)
   const setSearch = useDemoStore((state) => state.setPatientSearch)
   const focusId = useDemoStore((state) => state.patientFocusId)
   const setFocusId = useDemoStore((state) => state.setPatientFocusId)
-  const setRecordPatientId = useDemoStore((state) => state.setRecordPatientId)
   const createPatient = useDemoStore((state) => state.createPatient)
   const updatePatient = useDemoStore((state) => state.updatePatient)
   const [status, setStatus] = useState<PatientStatus | "all">("all")
   const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Patient | null>(null)
-  const [form, setForm] = useState<PatientInput>(emptyForm())
+  const [form, setForm] = useState<PatientInput>(() => emptyPatientForm([]))
   const [errors, setErrors] = useState<Partial<Record<keyof PatientInput, string>>>({})
 
   const filtered = useMemo(() => {
@@ -73,7 +55,7 @@ export function PatientsView() {
 
   function openCreate() {
     setEditing(null)
-    setForm(emptyForm())
+    setForm(emptyPatientForm(data.patients))
     setErrors({})
     setFormOpen(true)
   }
@@ -97,7 +79,7 @@ export function PatientsView() {
   }
 
   function save() {
-    const nextErrors = validatePatientInput(form)
+    const nextErrors = patientFormErrors(form, data.patients, editing?.id)
     setErrors(nextErrors)
     if (hasErrors(nextErrors)) return
     if (editing) {
@@ -212,7 +194,6 @@ export function PatientsView() {
                     <TabsTrigger value="dados">Cadastro</TabsTrigger>
                     <TabsTrigger value="consultas">Consultas</TabsTrigger>
                     <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
-                    <TabsTrigger value="prontuario">Prontuário</TabsTrigger>
                   </TabsList>
                   <TabsContent value="dados" className="space-y-2 text-sm">
                     <p>CPF demonstrativo: {focused.cpf}</p>
@@ -246,10 +227,6 @@ export function PatientsView() {
                       </div>
                     ))}
                   </TabsContent>
-                  <TabsContent value="prontuario">
-                    <p className="mb-3 text-sm text-muted-foreground">Os prontuários desta demonstração são editáveis e não contêm diagnóstico real.</p>
-                    <Button type="button" onClick={() => { setRecordPatientId(focused.id); router.push("/desktop/prontuarios") }}>Abrir prontuário</Button>
-                  </TabsContent>
                 </Tabs>
               </div>
             </>
@@ -260,68 +237,3 @@ export function PatientsView() {
   )
 }
 
-function PatientForm({
-  open,
-  title,
-  form,
-  errors,
-  onOpenChange,
-  onChange,
-  onSave,
-}: {
-  open: boolean
-  title: string
-  form: PatientInput
-  errors: Partial<Record<keyof PatientInput, string>>
-  onOpenChange: (open: boolean) => void
-  onChange: (form: PatientInput) => void
-  onSave: () => void
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Nome" htmlFor="patient-name" error={errors.name}>
-            <Input id="patient-name" className="h-10" value={form.name} onChange={(event) => onChange({ ...form, name: event.target.value })} />
-          </Field>
-          <Field label="CPF fictício" htmlFor="patient-cpf" error={errors.cpf} hint="Comece com 900.">
-            <Input id="patient-cpf" className="h-10" value={form.cpf} onChange={(event) => onChange({ ...form, cpf: event.target.value })} />
-          </Field>
-          <Field label="Telefone fictício" htmlFor="patient-phone" error={errors.phone}>
-            <Input id="patient-phone" className="h-10" value={form.phone} onChange={(event) => onChange({ ...form, phone: event.target.value })} />
-          </Field>
-          <Field label="E-mail de demonstração" htmlFor="patient-email" error={errors.email}>
-            <Input id="patient-email" className="h-10" value={form.email} onChange={(event) => onChange({ ...form, email: event.target.value })} />
-          </Field>
-          <Field label="Nascimento" htmlFor="patient-birth" error={errors.birthDate}>
-            <Input id="patient-birth" type="date" className="h-10" value={form.birthDate} onChange={(event) => onChange({ ...form, birthDate: event.target.value })} />
-          </Field>
-          <Field label="Cidade" htmlFor="patient-city" error={errors.city}>
-            <Input id="patient-city" className="h-10" value={form.city} onChange={(event) => onChange({ ...form, city: event.target.value })} />
-          </Field>
-          <Field label="Endereço" htmlFor="patient-address">
-            <Input id="patient-address" className="h-10" value={form.address} onChange={(event) => onChange({ ...form, address: event.target.value })} />
-          </Field>
-          <Field label="Status">
-            <Select value={form.status} onValueChange={(value) => onChange({ ...form, status: value as PatientStatus })}>
-              <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Ativo</SelectItem>
-                <SelectItem value="inactive">Inativo</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <div className="sm:col-span-2">
-            <Field label="Observação" htmlFor="patient-notes">
-              <Textarea id="patient-notes" value={form.notes} onChange={(event) => onChange({ ...form, notes: event.target.value })} />
-            </Field>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button type="button" onClick={onSave}>Salvar</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}

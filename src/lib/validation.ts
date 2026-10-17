@@ -1,4 +1,4 @@
-import type { PatientInput, ProfessionalInput } from "@/lib/types"
+import type { AssociateInput, PatientInput, ProfessionalInput } from "@/lib/types"
 
 export type FieldErrors<K extends string> = Partial<Record<K, string>>
 
@@ -21,6 +21,21 @@ export function validatePatientInput(input: PatientInput) {
   }
   if (!input.birthDate) errors.birthDate = "Informe uma data de nascimento fictícia."
   if (!input.city.trim()) errors.city = "Informe a cidade da demonstração."
+  return errors
+}
+
+export function validateAssociateInput(input: AssociateInput) {
+  const errors: FieldErrors<keyof AssociateInput> = {}
+  if (input.name.trim().length < 3) errors.name = "Informe um nome fictício com ao menos 3 letras."
+  if (!CPF_PATTERN.test(input.cpf.trim())) {
+    errors.cpf = "Use um CPF fictício começando com 900, no formato 900.000.000-00."
+  }
+  if (!PHONE_PATTERN.test(input.phone.trim())) {
+    errors.phone = "Use um telefone fictício no formato (86) 99000-0000."
+  }
+  if (!EMAIL_PATTERN.test(input.email.trim()) || !input.email.toLowerCase().includes("demo")) {
+    errors.email = "Use um e-mail de demonstração, por exemplo nome@demonstracao.demo."
+  }
   return errors
 }
 

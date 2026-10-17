@@ -187,6 +187,16 @@ export interface CheckoutReceipt {
   outcome: "approved" | "declined"
   amount: number
   method: PaymentMethod
+  associateBenefit?: AssociateBenefitSnapshot | null
+}
+
+export interface AssociateBenefitSnapshot {
+  name: string
+  discountPercent: number
+  listPrice: number
+  amount: number
+  transportRides: number
+  extras: string[]
 }
 
 export interface MobileFilters {
@@ -257,3 +267,51 @@ export const DEMO_CITIES = [
 export const CLINIC_NAME = "CuidarSaude"
 export const STORAGE_KEY = "cuidar-saude-demo-v1"
 export const CHANNEL_NAME = "cuidar-saude-demo"
+export const ASSOCIATE_FEE = 30
+
+export type CashKind = "income" | "expense"
+export type CashCategory = "consulta" | "mensalidade" | "exame" | "aluguel" | "salario" | "material" | "transporte" | "outro"
+
+export interface CashEntry {
+  id: string
+  kind: CashKind
+  category: CashCategory
+  description: string
+  amount: number
+  occurredOn: string
+  createdAt: string
+}
+
+export interface CashEntryInput {
+  kind: CashKind
+  category: CashCategory
+  description: string
+  amount: number
+  occurredOn: string
+}
+
+export interface AssociateRules {
+  fee: number
+  consultationDiscountPercent: number
+  transportEnabled: boolean
+  transportRidesPerMonth: number
+  extraBenefits: string[]
+}
+
+export interface Associate {
+  id: string
+  name: string
+  cpf: string
+  phone: string
+  email: string
+  status: PatientStatus
+  createdAt: string
+}
+
+export interface AssociateInput {
+  name: string
+  cpf: string
+  phone: string
+  email: string
+  status: PatientStatus
+}

@@ -1,8 +1,11 @@
 "use client"
 
+import { useMemo } from "react"
+import { AuthorizationGuideCard } from "@/components/mobile/authorization-guide-card"
 import { Button } from "@/components/ui/button"
 import { formatDate, formatMoney } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
+import { SPECIALTY_LABEL } from "@/lib/types"
 import { whatsAppLink } from "@/lib/whatsapp"
 
 export function AppointmentConfirmation({ onAnother }: { onAnother: () => void }) {
@@ -12,8 +15,29 @@ export function AppointmentConfirmation({ onAnother }: { onAnother: () => void }
   const patient = data.patients.find((item) => item.id === appointment?.patientId)
   const professional = data.professionals.find((item) => item.id === appointment?.professionalId)
   const service = professional?.services.find((item) => item.id === appointment?.serviceId)
+  const guide = useMemo(() => {
+    if (!receipt || receipt.outcome !== "approved" || !appointment || !patient || !professional) return null
+    return {
+      reference: receipt.reference,
+      authorizedAt: appointment.createdAt,
+      patient: { name: patient.name, cpf: patient.cpf, birthDate: patient.birthDate },
+      clinic: data.clinic,
+      appointmentAt: appointment.startsAt,
+      professional: {
+        name: professional.name,
+        specialtyLabel: SPECIALTY_LABEL[professional.specialty],
+        credentialLabel: professional.credentialLabel,
+        credentialCode: professional.credentialCode,
+        location: professional.location,
+        startHour: professional.startHour,
+        endHour: professional.endHour,
+      },
+      serviceName: service?.name ?? "Consulta",
+      associateBenefit: receipt.associateBenefit ?? null,
+    }
+  }, [appointment, data.clinic, patient, professional, receipt, service?.name])
 
-  if (!receipt || receipt.outcome !== "approved" || !appointment || !patient || !professional) {
+  if (!receipt || receipt.outcome !== "approved" || !appointment || !patient || !professional || !guide) {
     return null
   }
 
@@ -25,9 +49,14 @@ export function AppointmentConfirmation({ onAnother }: { onAnother: () => void }
     `CPF fictício: ${patient.cpf}`,
     `Consulta: ${service?.name ?? "Consulta"} com ${professional.name}`,
     `Quando: ${when}`,
-    `Pagamento: ${paymentLabel} · ${formatMoney(receipt.amount)}`,
+    receipt.associateBenefit
+      ? `Pagamento: ${paymentLabel} · ${formatMoney(receipt.amount)} com desconto de associado ${receipt.associateBenefit.discountPercent}%`
+      : `Pagamento: ${paymentLabel} · ${formatMoney(receipt.amount)}`,
+    receipt.associateBenefit?.transportRides
+      ? `Transporte: ${receipt.associateBenefit.transportRides} passagens no mês`
+      : "",
     `Reserva: ${receipt.reference}`,
-  ].join("\n")
+  ].filter(Boolean).join("\n")
   const whatsAppHref = whatsAppLink(data.clinic.phone, message)
 
   return (
@@ -42,8 +71,16 @@ export function AppointmentConfirmation({ onAnother }: { onAnother: () => void }
         <p className="text-lg font-semibold">{patient.name}</p>
         <p className="text-sm text-white/80">{professional.name}</p>
         <p className="text-sm text-white/80">{when}</p>
-        <p className="pt-2 text-sm">{formatMoney(receipt.amount)} · {paymentLabel}</p>
+        {receipt.associateBenefit ? (
+          <p className="pt-2 text-sm">
+            {formatMoney(receipt.amount)} · {paymentLabel} · desconto {receipt.associateBenefit.discountPercent}%
+            {receipt.associateBenefit.transportRides > 0 ? ` · ${receipt.associateBenefit.transportRides} passagens` : ""}
+          </p>
+        ) : (
+          <p className="pt-2 text-sm">{formatMoney(receipt.amount)} · {paymentLabel}</p>
+        )}
       </div>
+      <AuthorizationGuideCard input={guide} />
       <a
         href={whatsAppHref}
         target="_blank"

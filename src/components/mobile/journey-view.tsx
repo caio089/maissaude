@@ -8,6 +8,7 @@ import { AppointmentConfirmation } from "@/components/mobile/appointment-confirm
 import { Portrait } from "@/components/shared/portrait"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { associateQuote, findActiveAssociate } from "@/lib/associate-rules"
 import { hashDemoPassword } from "@/lib/demo-password"
 import { formatDate, formatMoney, toDateKey, WEEKDAY_SHORT } from "@/lib/format"
 import { availableSlots } from "@/lib/schedule"
@@ -124,6 +125,7 @@ function BookingFlow() {
   return (
     <div className="px-5 pt-6 pb-8">
       <Progress step={step} />
+      {step !== "pay" ? <AssociateNotice /> : null}
       {step === "specialty" ? (
         <section>
           <h1 className="text-2xl font-semibold">Qual especialidade?</h1>
@@ -212,6 +214,7 @@ function PaymentStep({
   onBack: () => void
 }) {
   const simulateCheckout = useDemoStore((state) => state.simulateCheckout)
+  const quote = useAssociateQuote(price)
   const [method, setMethod] = useState<PaymentMethod>("pix")
   const [processing, setProcessing] = useState(false)
   const [card, setCard] = useState({ number: "", name: "", expiry: "", cvv: "" })
@@ -239,7 +242,17 @@ function PaymentStep({
         <p className="text-sm text-muted-foreground">{professionalName}</p>
         <p className="font-medium">{serviceName}</p>
         <p className="text-sm">{formatDate(`${date}T12:00:00`, "d 'de' MMMM")} às {time}</p>
-        <p className="mt-2 text-2xl font-semibold">{formatMoney(price)}</p>
+        {quote.benefit ? (
+          <div className="mt-2">
+            <p className="text-sm text-muted-foreground line-through">{formatMoney(price)}</p>
+            <p className="text-2xl font-semibold">{formatMoney(quote.amount)}</p>
+            <p className="mt-1 text-sm text-teal">Desconto de associado {quote.benefit.discountPercent}%</p>
+            {quote.benefit.transportRides > 0 ? <p className="text-sm">Direito a {quote.benefit.transportRides} passagens de transporte no mês.</p> : null}
+            {quote.benefit.extras.map((item) => <p key={item} className="text-sm text-muted-foreground">{item}</p>)}
+          </div>
+        ) : (
+          <p className="mt-2 text-2xl font-semibold">{formatMoney(price)}</p>
+        )}
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
         <button type="button" onClick={() => setMethod("pix")} className={`rounded-2xl py-3 text-sm ${method === "pix" ? "bg-primary text-primary-foreground" : "bg-white ring-1 ring-border"}`}>Pix</button>
@@ -272,6 +285,26 @@ function PaymentStep({
         Simular pagamento aprovado
       </Button>
     </section>
+  )
+}
+
+function useAssociateQuote(listPrice: number) {
+  const associates = useDemoStore((state) => state.associates)
+  const rules = useDemoStore((state) => state.associateRules)
+  const patientId = useDemoStore((state) => state.mobileSessionPatientId)
+  const patient = useDemoStore((state) => state.data.patients.find((item) => item.id === patientId))
+  const associate = patient ? findActiveAssociate(associates, patient.cpf) : null
+  return associateQuote(listPrice, rules, associate)
+}
+
+function AssociateNotice() {
+  const quote = useAssociateQuote(0)
+  if (!quote.benefit) return null
+  return (
+    <p className="mb-4 rounded-2xl bg-accent px-4 py-3 text-sm">
+      Associado {quote.benefit.name}. A consulta pelo aplicativo sai com {quote.benefit.discountPercent}% de desconto
+      {quote.benefit.transportRides > 0 ? ` e inclui ${quote.benefit.transportRides} passagens de transporte no mês` : ""}.
+    </p>
   )
 }
 

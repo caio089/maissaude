@@ -3,6 +3,7 @@
 import { addMinutes, formatISO } from "date-fns"
 import { create } from "zustand"
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware"
+import { associateQuote, DEFAULT_ASSOCIATE_RULES, normalizeAssociateRules, findActiveAssociate, associateRulesError } from "@/lib/associate-rules"
 import { combineDateAndTime, createId, createReference, toDateKey } from "@/lib/format"
 import { findConflict, serviceOf } from "@/lib/schedule"
 import { createSeed, emptyBooking } from "@/lib/seed"
@@ -12,6 +13,11 @@ import {
   STORAGE_KEY,
   type AgendaView,
   type AppointmentInput,
+  type Associate,
+  type AssociateInput,
+  type AssociateRules,
+  type CashEntry,
+  type CashEntryInput,
   type BookingDraft,
   type CheckoutReceipt,
   type MobileAccount,
@@ -29,6 +35,9 @@ export interface DemoStore {
   booking: BookingDraft
   lastCheckout: CheckoutReceipt | null
   mobileAccounts: MobileAccount[]
+  associates: Associate[]
+  associateRules: AssociateRules
+  cashEntries: CashEntry[]
   mobileSessionPatientId: string | null
   dashboardPeriod: DashboardPeriod
   mobileCity: string
@@ -60,6 +69,11 @@ export interface DemoStore {
   markNotificationsRead: () => void
   createPatient: (input: PatientInput) => string
   updatePatient: (id: string, input: PatientInput) => void
+  createAssociate: (input: AssociateInput) => { ok: true; id: string } | { ok: false; message: string }
+  updateAssociate: (id: string, input: AssociateInput) => { ok: true } | { ok: false; message: string }
+  updateAssociateRules: (rules: AssociateRules) => { ok: true } | { ok: false; message: string }
+  createCashEntry: (input: CashEntryInput) => { ok: true; id: string } | { ok: false; message: string }
+  removeCashEntry: (id: string) => void
   updateCurrentPatient: (patch: Partial<Pick<PatientInput, "name" | "phone" | "email" | "city">> & { reminderEnabled?: boolean }) => void
   createProfessional: (input: ProfessionalInput) => string
   updateProfessional: (id: string, input: ProfessionalInput) => void
@@ -93,6 +107,9 @@ function createInitialState() {
     booking: emptyBooking(),
     lastCheckout: null as CheckoutReceipt | null,
     mobileAccounts: [] as MobileAccount[],
+    associates: [] as Associate[],
+    associateRules: DEFAULT_ASSOCIATE_RULES,
+    cashEntries: [] as CashEntry[],
     mobileSessionPatientId: null as string | null,
     dashboardPeriod: "30d" as DashboardPeriod,
     mobileCity: "Teresina - PI",
@@ -233,6 +250,65 @@ export const useDemoStore = create<DemoStore>()(
             readNotificationIds: ["notif-upcoming", "notif-pending", "notif-noshow", `notif-today-${toDateKey(new Date())}`],
           },
         })),
+      createAssociate: (input) => {
+        const conflict = associateConflict(get().associates, input)
+        if (conflict) return { ok: false, message: conflict }
+        const id = createId("ass")
+        const associate: Associate = {
+          id,
+          name: input.name.trim(),
+          cpf: input.cpf.trim(),
+          phone: input.phone.trim(),
+          email: input.email.trim(),
+          status: input.status,
+          createdAt: formatISO(new Date()),
+        }
+        set((state) => ({ associates: [associate, ...state.associates] }))
+        return { ok: true, id }
+      },
+      updateAssociate: (id, input) => {
+        const conflict = associateConflict(get().associates, input, id)
+        if (conflict) return { ok: false, message: conflict }
+        set((state) => ({
+          associates: state.associates.map((associate) =>
+            associate.id === id
+              ? {
+                  ...associate,
+                  name: input.name.trim(),
+                  cpf: input.cpf.trim(),
+                  phone: input.phone.trim(),
+                  email: input.email.trim(),
+                  status: input.status,
+                }
+              : associate,
+          ),
+        }))
+        return { ok: true }
+      },
+      updateAssociateRules: (rules) => {
+        const next = normalizeAssociateRules(rules)
+        const message = associateRulesError(next)
+        if (message) return { ok: false, message }
+        set({ associateRules: next })
+        return { ok: true }
+      },
+      createCashEntry: (input) => {
+        const message = cashEntryError(input)
+        if (message) return { ok: false, message }
+        const id = createId("cash")
+        const entry: CashEntry = {
+          id,
+          kind: input.kind,
+          category: input.category,
+          description: input.description.trim(),
+          amount: roundMoney(input.amount),
+          occurredOn: input.occurredOn,
+          createdAt: formatISO(new Date()),
+        }
+        set((state) => ({ cashEntries: [entry, ...state.cashEntries] }))
+        return { ok: true, id }
+      },
+      removeCashEntry: (id) => set((state) => ({ cashEntries: state.cashEntries.filter((entry) => entry.id !== id) })),
       createPatient: (input) => {
         const id = createId("pat")
         const patient = {
@@ -468,6 +544,9 @@ export const useDemoStore = create<DemoStore>()(
         const professional = data.professionals.find((item) => item.id === booking.professionalId)
         const service = professional ? serviceOf(professional, booking.serviceId) : undefined
         if (!professional || !service) return { ok: false, message: "O serviço selecionado não está mais disponível." }
+        const patient = data.patients.find((item) => item.id === data.currentPatientId)
+        const associate = patient ? findActiveAssociate(get().associates, patient.cpf) : null
+        const quote = associateQuote(service.price, get().associateRules, associate)
         const startsAt = combineDateAndTime(booking.date, booking.time)
         const endsAt = addMinutes(startsAt, service.durationMin)
         if (outcome === "declined") {
@@ -475,8 +554,9 @@ export const useDemoStore = create<DemoStore>()(
             reference: createReference(),
             appointmentId: null,
             outcome: "declined",
-            amount: service.price,
+            amount: quote.amount,
             method,
+            associateBenefit: quote.benefit,
           }
           set((state) => ({
             lastCheckout: receipt,
@@ -488,7 +568,7 @@ export const useDemoStore = create<DemoStore>()(
                   appointmentId: null,
                   patientId: state.data.currentPatientId,
                   professionalId: professional.id,
-                  amount: service.price,
+                  amount: quote.amount,
                   method,
                   status: "declined",
                   createdAt: formatISO(new Date()),
@@ -511,8 +591,9 @@ export const useDemoStore = create<DemoStore>()(
           reference,
           appointmentId,
           outcome: "approved",
-          amount: service.price,
+          amount: quote.amount,
           method,
+          associateBenefit: quote.benefit,
         }
         set((state) => ({
           booking: emptyBooking(),
@@ -542,14 +623,16 @@ export const useDemoStore = create<DemoStore>()(
                 appointmentId,
                 patientId: state.data.currentPatientId,
                 professionalId: professional.id,
-                amount: service.price,
+                amount: quote.amount,
                 method,
                 status: "paid",
                 createdAt: formatISO(new Date()),
                 paidAt: formatISO(new Date()),
                 reference,
                 simulated: true,
-                description: `${service.name} · ${professional.name}`,
+                description: quote.benefit
+                  ? `${service.name} · ${professional.name} · desconto de associado ${quote.benefit.discountPercent}%`
+                  : `${service.name} · ${professional.name}`,
               },
               ...state.data.payments,
             ],
@@ -608,11 +691,43 @@ export const useDemoStore = create<DemoStore>()(
         if (!persisted || typeof persisted !== "object") return current
         const stored = persisted as Partial<DemoStore>
         if (!stored.data || stored.data.schemaVersion !== SCHEMA_VERSION) return current
-        return { ...current, ...stored }
+        return {
+          ...current,
+          ...stored,
+          associates: stored.associates ?? [],
+          associateRules: normalizeAssociateRules(stored.associateRules),
+          cashEntries: stored.cashEntries ?? [],
+        }
       },
     },
   ),
 )
+
+const INCOME_CATEGORIES = new Set(["consulta", "mensalidade", "exame", "outro"])
+const EXPENSE_CATEGORIES = new Set(["aluguel", "salario", "material", "transporte", "outro"])
+
+function cashEntryError(input: CashEntryInput) {
+  if (input.description.trim().length < 3) return "Descreva o lançamento com ao menos 3 letras."
+  if (!Number.isFinite(input.amount) || input.amount <= 0 || input.amount > 100000) {
+    return "Informe um valor entre R$ 0,01 e R$ 100.000."
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.occurredOn)) return "Informe a data do lançamento."
+  const allowed = input.kind === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
+  if (!allowed.has(input.category)) return "Escolha uma categoria compatível com receita ou saída."
+  return null
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100
+}
+
+function associateConflict(associates: Associate[], input: AssociateInput, ignoreId?: string) {
+  const cpf = input.cpf.trim()
+  if (associates.some((associate) => associate.id !== ignoreId && associate.cpf === cpf)) {
+    return "Este CPF fictício já está cadastrado como associado."
+  }
+  return null
+}
 
 function nextDemoContact(patients: Array<{ phone: string; email: string }>) {
   for (let sequence = 26; sequence < 900; sequence += 1) {

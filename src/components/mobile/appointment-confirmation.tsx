@@ -32,7 +32,18 @@ export function AppointmentConfirmation({ onAnother }: { onAnother: () => void }
         startHour: professional.startHour,
         endHour: professional.endHour,
       },
-      serviceName: service?.name ?? "Consulta",
+      serviceName: receipt.items?.[0]?.serviceName ?? service?.name ?? "Consulta",
+      procedures: (receipt.items?.length ? receipt.items : [{
+        serviceName: service?.name ?? "Consulta",
+        professionalName: professional.name,
+        specialtyLabel: SPECIALTY_LABEL[professional.specialty],
+        kind: "consulta" as const,
+      }]).map((item) => ({
+        code: item.kind === "exame" ? "CS-EXAME" : item.kind === "cirurgia" ? "CS-CIRURGIA" : "CS-CONSULTA",
+        description: item.serviceName,
+        doctor: item.professionalName,
+        sector: item.specialtyLabel,
+      })),
       associateBenefit: receipt.associateBenefit ?? null,
     }
   }, [appointment, data.clinic, patient, professional, receipt, service?.name])
@@ -41,14 +52,23 @@ export function AppointmentConfirmation({ onAnother }: { onAnother: () => void }
     return null
   }
 
+  const items = receipt.items?.length
+    ? receipt.items
+    : [{
+        serviceName: service?.name ?? "Consulta",
+        professionalName: professional.name,
+        startsAt: appointment.startsAt,
+        amount: receipt.amount,
+        kind: "consulta" as const,
+        specialtyLabel: SPECIALTY_LABEL[professional.specialty],
+      }]
   const when = `${formatDate(appointment.startsAt, "EEEE, d 'de' MMMM")} às ${formatDate(appointment.startsAt, "HH:mm")}`
   const paymentLabel = receipt.method === "pix" ? "Pix simulado" : "Cartão simulado"
   const message = [
     `Olá, ${data.clinic.name}. Confirmação de demonstração.`,
     `Paciente: ${patient.name}`,
     `CPF fictício: ${patient.cpf}`,
-    `Consulta: ${service?.name ?? "Consulta"} com ${professional.name}`,
-    `Quando: ${when}`,
+    ...items.map((item) => `${item.serviceName} com ${item.professionalName} · ${formatDate(item.startsAt, "dd/MM/yyyy HH:mm")}`),
     receipt.associateBenefit
       ? `Pagamento: ${paymentLabel} · ${formatMoney(receipt.amount)} com desconto de associado ${receipt.associateBenefit.discountPercent}%`
       : `Pagamento: ${paymentLabel} · ${formatMoney(receipt.amount)}`,
@@ -60,16 +80,22 @@ export function AppointmentConfirmation({ onAnother }: { onAnother: () => void }
   const whatsAppHref = whatsAppLink(data.clinic.phone, message)
 
   return (
-    <div className="px-5 pt-8 pb-8">
-      <p className="text-xs font-medium uppercase tracking-wide text-teal">Demonstração</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight">Consulta e pagamento confirmados</h1>
+    <div className="px-4 pt-6 pb-8">
+      <p className="section-kicker">Pedido concluído</p>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight">Pagamento confirmado</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         A reserva e o valor já estão na agenda e no financeiro da clínica, neste navegador.
       </p>
-      <div className="mt-5 space-y-2 rounded-3xl bg-brand p-5 text-white">
+      <div className="mt-5 space-y-2 rounded-[1.6rem] bg-brand p-5 text-white">
         <p className="text-xs text-white/70">Reserva {receipt.reference}</p>
         <p className="text-lg font-semibold">{patient.name}</p>
-        <p className="text-sm text-white/80">{professional.name}</p>
+        <ul className="mt-3 space-y-2 text-sm text-white/85">
+          {items.map((item) => (
+            <li key={`${item.serviceName}-${item.startsAt}`}>
+              {item.serviceName} · {item.professionalName} · {formatDate(item.startsAt, "dd/MM HH:mm")}
+            </li>
+          ))}
+        </ul>
         <p className="text-sm text-white/80">{when}</p>
         {receipt.associateBenefit ? (
           <p className="pt-2 text-sm">
@@ -93,7 +119,7 @@ export function AppointmentConfirmation({ onAnother }: { onAnother: () => void }
         O botão abre o WhatsApp com a confirmação pronta. A mensagem só é enviada se a pessoa confirmar no aplicativo. O número da clínica é fictício.
       </p>
       <Button type="button" variant="outline" className="mt-4 h-12 w-full" onClick={onAnother}>
-        Agendar outra consulta
+        Voltar para o começo
       </Button>
     </div>
   )

@@ -19,6 +19,7 @@ export interface AuthorizationGuideInput {
     endHour: string
   }
   serviceName: string
+  procedures?: Array<{ code: string; description: string; doctor: string; sector: string }>
   associateBenefit?: AssociateBenefitSnapshot | null
 }
 
@@ -80,13 +81,15 @@ export async function createAuthorizationGuide(input: AuthorizationGuideInput) {
     ["UF", city.uf],
   ])
   y += 18
-  y = drawProcedureTable(context, y, {
-    code: "CS-CONSULTA",
-    description: input.serviceName,
-    quantity: "1",
-    doctor: input.professional.name,
-    sector: input.professional.specialtyLabel,
-  })
+  const procedures = input.procedures?.length
+    ? input.procedures
+    : [{
+        code: "CS-CONSULTA",
+        description: input.serviceName,
+        doctor: input.professional.name,
+        sector: input.professional.specialtyLabel,
+      }]
+  y = drawProcedureTable(context, y, procedures)
   const bottom = drawFooter(context, input, y + 28)
   const image = cropCanvas(canvas, scale, bottom + 40)
 
@@ -174,7 +177,7 @@ function drawSection(context: CanvasRenderingContext2D, y: number, title: string
 function drawProcedureTable(
   context: CanvasRenderingContext2D,
   y: number,
-  row: { code: string; description: string; quantity: string; doctor: string; sector: string },
+  rows: Array<{ code: string; description: string; doctor: string; sector: string }>,
 ) {
   context.fillStyle = "#0d3b4c"
   context.fillRect(48, y, 698, 28)
@@ -182,25 +185,37 @@ function drawProcedureTable(
   context.font = "600 13px system-ui, sans-serif"
   context.fillText("Dados dos procedimentos", 60, y + 19)
 
-  const columns = [
-    { label: "Código", value: row.code, x: 60, width: 110 },
-    { label: "Descrição", value: row.description, x: 170, width: 180 },
-    { label: "Qtd.", value: row.quantity, x: 360, width: 40 },
-    { label: "Médico executante", value: row.doctor, x: 410, width: 190 },
-    { label: "Setor", value: row.sector, x: 610, width: 120 },
+  const headers = [
+    { label: "Código", x: 60 },
+    { label: "Descrição", x: 170 },
+    { label: "Qtd.", x: 360 },
+    { label: "Médico executante", x: 410 },
+    { label: "Setor", x: 610 },
   ]
   context.fillStyle = "#eef6f7"
   context.fillRect(48, y + 28, 698, 26)
   context.fillStyle = "#5c6b73"
   context.font = "12px system-ui, sans-serif"
-  for (const column of columns) context.fillText(column.label, column.x, y + 46)
-  context.fillStyle = "#102027"
-  context.font = "13px system-ui, sans-serif"
-  let rowBottom = y + 74
-  for (const column of columns) {
-    rowBottom = Math.max(rowBottom, fillWrapped(context, column.value, column.x, y + 74, column.width, 16))
+  for (const header of headers) context.fillText(header.label, header.x, y + 46)
+
+  let cursor = y + 74
+  for (const row of rows) {
+    context.fillStyle = "#102027"
+    context.font = "13px system-ui, sans-serif"
+    const columns = [
+      { value: row.code, x: 60, width: 100 },
+      { value: row.description, x: 170, width: 180 },
+      { value: "1", x: 360, width: 40 },
+      { value: row.doctor, x: 410, width: 190 },
+      { value: row.sector, x: 610, width: 120 },
+    ]
+    let rowBottom = cursor
+    for (const column of columns) {
+      rowBottom = Math.max(rowBottom, fillWrapped(context, column.value, column.x, cursor, column.width, 16))
+    }
+    cursor = rowBottom + 8
   }
-  return rowBottom + 8
+  return cursor
 }
 
 function drawFooter(context: CanvasRenderingContext2D, input: AuthorizationGuideInput, y: number) {

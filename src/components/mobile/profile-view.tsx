@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
+import { AssociateAccountPanel } from "@/components/mobile/associate-subscription"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Portrait } from "@/components/shared/portrait"
 import { Button } from "@/components/ui/button"
@@ -37,14 +38,29 @@ export function MobileProfile() {
 
   return (
     <div className="space-y-5 px-5 pt-5 pb-8">
-      <div className="flex items-center gap-3">
-        <Portrait seed={patient.name} name={patient.name} className="size-16" />
-        <div>
-          <p className="text-xs uppercase tracking-wide text-teal">Paciente de demonstração</p>
-          <h1 className="text-2xl font-semibold">{patient.name}</h1>
+      <div className="rounded-[1.6rem] bg-brand p-4 text-white">
+        <div className="flex items-center gap-3">
+          <Portrait seed={patient.name} name={patient.name} className="size-16 ring-2 ring-white/30" />
+          <div>
+            <p className="text-xs text-white/70">Sua conta</p>
+            <h1 className="text-2xl font-semibold">{patient.name}</h1>
+            <p className="text-sm text-white/75">{patient.city}</p>
+          </div>
         </div>
+        <dl className="mt-4 grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-2xl bg-white/10 px-3 py-2">
+            <dt className="text-white/60">CPF fictício</dt>
+            <dd className="mt-1 font-medium">{patient.cpf}</dd>
+          </div>
+          <div className="rounded-2xl bg-white/10 px-3 py-2">
+            <dt className="text-white/60">WhatsApp</dt>
+            <dd className="mt-1 font-medium">{patient.phone}</dd>
+          </div>
+        </dl>
       </div>
-      <section className="space-y-3 rounded-3xl bg-white p-4 ring-1 ring-border">
+      <AssociateAccountPanel />
+      <section className="surface-card space-y-3 p-4">
+        <p className="text-sm font-medium">Dados da conta</p>
         <label className="block text-sm">Nome
           <Input className="mt-1 h-10" value={name} onChange={(event) => setName(event.target.value)} />
         </label>
@@ -68,7 +84,7 @@ export function MobileProfile() {
           Salvar dados
         </Button>
       </section>
-      <section className="rounded-3xl bg-white p-4 ring-1 ring-border">
+      <section className="surface-card p-4">
         <p className="text-sm font-medium">Preferências</p>
         <label className="mt-3 flex items-center justify-between text-sm">
           Lembretes demonstrativos
@@ -81,7 +97,7 @@ export function MobileProfile() {
           </select>
         </label>
       </section>
-      <section className="rounded-3xl bg-white p-4 ring-1 ring-border">
+      <section className="surface-card p-4">
         <p className="text-sm font-medium">Histórico</p>
         <p className="mt-1 text-sm text-muted-foreground">{history} consultas neste roteiro, incluindo as criadas agora.</p>
         <Button asChild variant="outline" className="mt-3"><Link href="/mobile/consultas">Abrir consultas</Link></Button>
@@ -97,7 +113,6 @@ export function MobileProfile() {
       </section>
       <Button type="button" variant="outline" className="w-full" onClick={() => { logoutMobileAccount(); toast.success("Conta encerrada nesta demonstração.") }}>Sair da conta</Button>
       <Button type="button" variant="destructive" className="w-full" onClick={() => setConfirm(true)}>Sair do modo demonstração</Button>
-      <Button asChild variant="outline" className="w-full"><Link href="/desktop">Abrir painel da clínica</Link></Button>
       <ConfirmDialog
         open={confirm}
         onOpenChange={setConfirm}

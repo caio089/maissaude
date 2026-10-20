@@ -19,6 +19,7 @@ import {
   type CashEntry,
   type CashEntryInput,
   type BookingDraft,
+  type CartLine,
   type CheckoutReceipt,
   type MobileAccount,
   type DashboardPeriod,
@@ -26,8 +27,11 @@ import {
   type MobileFilters,
   type PatientInput,
   type PaymentMethod,
+  type Professional,
   type ProfessionalInput,
+  type Service,
   type Specialty,
+  SPECIALTY_LABEL,
 } from "@/lib/types"
 
 export interface DemoStore {
@@ -62,7 +66,7 @@ export interface DemoStore {
   patchBooking: (patch: Partial<BookingDraft>) => void
   startBooking: (professionalId: string) => void
   clearBooking: () => void
-  registerMobileAccount: (input: { name: string; cpf: string; passwordHash: string }) => { ok: true } | { ok: false; message: string }
+  registerMobileAccount: (input: { name: string; cpf: string; phone: string; birthDate: string; passwordHash: string }) => { ok: true } | { ok: false; message: string }
   loginMobileAccount: (input: { cpf: string; passwordHash: string }) => { ok: true } | { ok: false; message: string }
   logoutMobileAccount: () => void
   clearCheckout: () => void
@@ -71,6 +75,7 @@ export interface DemoStore {
   updatePatient: (id: string, input: PatientInput) => void
   createAssociate: (input: AssociateInput) => { ok: true; id: string } | { ok: false; message: string }
   updateAssociate: (id: string, input: AssociateInput) => { ok: true } | { ok: false; message: string }
+  subscribeCurrentPatient: () => { ok: true } | { ok: false; message: string }
   updateAssociateRules: (rules: AssociateRules) => { ok: true } | { ok: false; message: string }
   createCashEntry: (input: CashEntryInput) => { ok: true; id: string } | { ok: false; message: string }
   removeCashEntry: (id: string) => void
@@ -85,6 +90,7 @@ export interface DemoStore {
   removeBlock: (id: string) => void
   settlePayment: (paymentId: string, method: PaymentMethod) => void
   simulateCheckout: (method: PaymentMethod, outcome: "approved" | "declined") => { ok: true; receipt: CheckoutReceipt } | { ok: false; message: string }
+  checkoutCart: (lines: CartLine[], method: PaymentMethod, outcome: "approved" | "declined") => { ok: true; receipt: CheckoutReceipt } | { ok: false; message: string }
   confirmReschedule: () => { ok: true } | { ok: false; message: string }
   updateRecord: (id: string, patch: { notes?: string; evolution?: string; dentalNote?: string }) => void
   resetDemo: () => void
@@ -185,9 +191,16 @@ export const useDemoStore = create<DemoStore>()(
           lastCheckout: null,
         }),
       clearBooking: () => set({ booking: emptyBooking() }),
-      registerMobileAccount: ({ name, cpf, passwordHash }) => {
+      registerMobileAccount: ({ name, cpf, phone, birthDate, passwordHash }) => {
         const normalizedCpf = cpf.trim()
+        const normalizedPhone = phone.trim()
         const state = get()
+        if (!/^\(\d{2}\) \d{5}-\d{4}$/.test(normalizedPhone)) {
+          return { ok: false, message: "Use um WhatsApp fictício no formato (86) 99000-0000." }
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || birthDate > toDateKey(new Date())) {
+          return { ok: false, message: "Informe uma data de nascimento fictícia que já tenha ocorrido." }
+        }
         if (state.mobileAccounts.some((account) => account.cpf === normalizedCpf)) {
           return { ok: false, message: "Este CPF já tem conta nesta demonstração. Entre com a senha." }
         }
@@ -198,7 +211,13 @@ export const useDemoStore = create<DemoStore>()(
             mobileSessionPatientId: existing.id,
             lastCheckout: null,
             booking: emptyBooking(),
-            data: { ...state.data, currentPatientId: existing.id },
+            data: {
+              ...state.data,
+              currentPatientId: existing.id,
+              patients: state.data.patients.map((patient) =>
+                patient.id === existing.id ? { ...patient, name: name.trim(), phone: normalizedPhone, birthDate } : patient,
+              ),
+            },
           })
           return { ok: true }
         }
@@ -208,9 +227,9 @@ export const useDemoStore = create<DemoStore>()(
           id,
           name: name.trim(),
           cpf: normalizedCpf,
-          phone: contact.phone,
+          phone: normalizedPhone,
           email: contact.email,
-          birthDate: "1990-01-15",
+          birthDate,
           gender: "Não informado",
           address: "Endereço fictício informado no aplicativo",
           city: state.mobileCity,
@@ -284,6 +303,24 @@ export const useDemoStore = create<DemoStore>()(
           ),
         }))
         return { ok: true }
+      },
+      // A conta do aplicativo só vira associada por esta assinatura mensal.
+      subscribeCurrentPatient: () => {
+        const state = get()
+        const patient = state.data.patients.find((item) => item.id === state.mobileSessionPatientId)
+        if (!patient) return { ok: false, message: "Entre na conta para assinar." }
+        const input: AssociateInput = {
+          name: patient.name,
+          cpf: patient.cpf,
+          phone: patient.phone,
+          email: patient.email,
+          status: "active",
+        }
+        const existing = state.associates.find((item) => item.cpf.trim() === patient.cpf.trim())
+        if (existing?.status === "active") return { ok: false, message: "Esta conta já tem assinatura de associado." }
+        if (existing) return get().updateAssociate(existing.id, input)
+        const created = get().createAssociate(input)
+        return created.ok ? { ok: true } : created
       },
       updateAssociateRules: (rules) => {
         const next = normalizeAssociateRules(rules)
@@ -640,6 +677,162 @@ export const useDemoStore = create<DemoStore>()(
         }))
         return { ok: true, receipt }
       },
+      checkoutCart: (lines, method, outcome) => {
+        if (lines.length === 0) return { ok: false, message: "Coloque ao menos um item no carrinho." }
+        const { data } = get()
+        const patient = data.patients.find((item) => item.id === data.currentPatientId)
+        if (!patient) return { ok: false, message: "Entre na conta para continuar." }
+        const associate = findActiveAssociate(get().associates, patient.cpf)
+        const rules = get().associateRules
+        const occupied = [...data.appointments]
+        const prepared: PreparedLine[] = []
+        for (const line of lines) {
+          const professional = data.professionals.find((item) => item.id === line.professionalId)
+          if (!professional) return { ok: false, message: "Um profissional do carrinho não está mais disponível." }
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(line.date) || !/^\d{2}:\d{2}$/.test(line.time)) {
+            return { ok: false, message: "Cada item precisa de dia e horário." }
+          }
+          const quote = line.kind === "consulta"
+            ? associateQuote(line.price, rules, associate)
+            : { amount: line.price, benefit: null }
+          const startsAt = combineDateAndTime(line.date, line.time)
+          const endsAt = addMinutes(startsAt, line.durationMin)
+          if (outcome === "approved") {
+            const conflict = findConflict(professional.id, startsAt, endsAt, occupied, data.blockedSlots)
+            if (conflict) return { ok: false, message: `${line.serviceName} nesse horário já foi reservado. Volte e escolha outro.` }
+            occupied.push({
+              id: `hold-${prepared.length}`,
+              patientId: patient.id,
+              professionalId: professional.id,
+              serviceId: line.serviceId,
+              startsAt: formatISO(startsAt),
+              endsAt: formatISO(endsAt),
+              status: "confirmed",
+              modality: "presencial",
+              notes: "",
+              createdAt: formatISO(new Date()),
+              origin: "mobile",
+            })
+          }
+          prepared.push({
+            line,
+            professional,
+            service: lineService(professional, line),
+            amount: quote.amount,
+            benefit: quote.benefit,
+            startsAt,
+            endsAt,
+          })
+        }
+        const listPrice = prepared.filter((item) => item.line.kind === "consulta").reduce((total, item) => total + item.line.price, 0)
+        const benefitQuote = associateQuote(listPrice, rules, listPrice > 0 ? associate : null)
+        const total = prepared.reduce((sum, item) => sum + item.amount, 0)
+        const reference = createReference()
+        if (outcome === "declined") {
+          const receipt: CheckoutReceipt = {
+            reference,
+            appointmentId: null,
+            outcome: "declined",
+            amount: total,
+            method,
+            associateBenefit: benefitQuote.benefit,
+            items: [],
+          }
+          set((state) => ({
+            lastCheckout: receipt,
+            data: {
+              ...state.data,
+              payments: [
+                {
+                  id: createId("pay"),
+                  appointmentId: null,
+                  patientId: state.data.currentPatientId,
+                  professionalId: prepared[0].professional.id,
+                  amount: total,
+                  method,
+                  status: "declined",
+                  createdAt: formatISO(new Date()),
+                  reference,
+                  simulated: true,
+                  description: "Tentativa recusada do carrinho",
+                },
+                ...state.data.payments,
+              ],
+            },
+          }))
+          return { ok: false, message: "Pagamento de demonstração recusado. O carrinho continua disponível." }
+        }
+        const createdAt = formatISO(new Date())
+        const appointments = prepared.map((item) => ({
+          id: createId("apt"),
+          patientId: data.currentPatientId,
+          professionalId: item.professional.id,
+          serviceId: item.service.id,
+          startsAt: formatISO(item.startsAt),
+          endsAt: formatISO(item.endsAt),
+          status: "confirmed" as const,
+          modality: item.service.modality,
+          notes: "Item confirmado pelo aplicativo de demonstração do paciente.",
+          createdAt,
+          origin: "mobile" as const,
+        }))
+        const paymentId = createId("pay")
+        const receipt: CheckoutReceipt = {
+          reference,
+          appointmentId: appointments[0]?.id ?? null,
+          outcome: "approved",
+          amount: total,
+          method,
+          associateBenefit: benefitQuote.benefit,
+          items: prepared.map((item, index) => ({
+            serviceName: item.line.serviceName,
+            professionalName: item.professional.name,
+            specialtyLabel: SPECIALTY_LABEL[item.professional.specialty],
+            startsAt: appointments[index].startsAt,
+            amount: item.amount,
+            kind: item.line.kind,
+          })),
+        }
+        set((state) => ({
+          booking: emptyBooking(),
+          lastCheckout: receipt,
+          data: {
+            ...state.data,
+            professionals: state.data.professionals.map((professional) => {
+              const extras = prepared
+                .filter((item) => item.professional.id === professional.id && !professional.services.some((service) => service.id === item.service.id))
+                .map((item) => item.service)
+              return extras.length === 0 ? professional : { ...professional, services: [...professional.services, ...extras] }
+            }),
+            appointments: [
+              ...appointments.map((appointment) => ({ ...appointment, paymentId })),
+              ...state.data.appointments,
+            ],
+            payments: [
+              {
+                id: paymentId,
+                appointmentId: appointments[0]?.id ?? null,
+                patientId: state.data.currentPatientId,
+                professionalId: prepared[0].professional.id,
+                amount: total,
+                method,
+                status: "paid" as const,
+                createdAt,
+                paidAt: createdAt,
+                reference,
+                simulated: true as const,
+                description: prepared
+                  .map((item) => benefitQuote.benefit && item.line.kind === "consulta"
+                    ? `${item.line.serviceName} · ${item.professional.name} · desconto de associado ${benefitQuote.benefit.discountPercent}%`
+                    : `${item.line.serviceName} · ${item.professional.name}`)
+                  .join(" · "),
+              },
+              ...state.data.payments,
+            ],
+          },
+        }))
+        return { ok: true, receipt }
+      },
       confirmReschedule: () => {
         const { booking } = get()
         if (!booking.rescheduleAppointmentId || !booking.date || !booking.time) {
@@ -702,6 +895,26 @@ export const useDemoStore = create<DemoStore>()(
     },
   ),
 )
+
+interface PreparedLine {
+  line: CartLine
+  professional: Professional
+  service: Service
+  amount: number
+  benefit: ReturnType<typeof associateQuote>["benefit"]
+  startsAt: Date
+  endsAt: Date
+}
+
+function lineService(professional: Professional, line: CartLine): Service {
+  return professional.services.find((service) => service.id === line.serviceId) ?? {
+    id: line.serviceId,
+    name: line.serviceName,
+    durationMin: line.durationMin,
+    price: line.price,
+    modality: "presencial",
+  }
+}
 
 const INCOME_CATEGORIES = new Set(["consulta", "mensalidade", "exame", "outro"])
 const EXPENSE_CATEGORIES = new Set(["aluguel", "salario", "material", "transporte", "outro"])

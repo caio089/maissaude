@@ -36,9 +36,13 @@ export function MobileSearch() {
   })
 
   return (
-    <div className="px-5 pt-5 pb-6">
+    <div className="px-4 pt-5 pb-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Buscar</h1>
+        <div>
+          <p className="section-kicker">Catálogo</p>
+          <h1 className="mt-1 text-2xl font-semibold">Buscar</h1>
+          <p className="text-sm text-muted-foreground">{results.length} {results.length === 1 ? "profissional" : "profissionais"} nesta demonstração</p>
+        </div>
         <Button type="button" variant="outline" size="icon" aria-label="Filtros" onClick={() => setOpen(true)}>
           <SlidersHorizontal />
         </Button>
@@ -56,12 +60,13 @@ export function MobileSearch() {
         {results.length === 0 ? (
           <EmptyState icon={Search} title="Nenhum profissional encontrado" description="Altere a especialidade, o preço ou a disponibilidade para ver o catálogo de demonstração." />
         ) : results.map((professional) => (
-          <Link key={professional.id} href={`/mobile/profissional/${professional.id}`} className="flex gap-3 rounded-3xl bg-white p-4 ring-1 ring-border">
+          <Link key={professional.id} href={`/mobile/profissional/${professional.id}`} className="surface-card flex gap-3 p-4">
             <Portrait seed={professional.avatarSeed} name={professional.name} className="size-16" />
             <span className="min-w-0">
               <span className="block font-medium">{professional.name}</span>
               <span className="block text-sm text-muted-foreground">{SPECIALTY_LABEL[professional.specialty]} · {CLINIC_NAME}</span>
-              <span className="mt-1 block text-sm">{formatMoney(professional.price)} · nota demo {professional.rating.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
+              <span className="mt-1 block text-sm">{formatMoney(professional.price)} · nota {professional.rating.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{professional.startHour}–{professional.endHour} · {professional.location}</span>
             </span>
           </Link>
         ))}

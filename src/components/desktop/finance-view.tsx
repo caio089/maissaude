@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Plus, Receipt } from "lucide-react"
+import { IdCard, Plus, Receipt } from "lucide-react"
 import { toast } from "sonner"
 import { MonthlyBars, RevenueArea } from "@/components/desktop/charts"
 import { Field } from "@/components/shared/field"
@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatDate, formatMoney, toDateKey } from "@/lib/format"
 import { computeDashboard, sumAmount } from "@/lib/metrics"
 import { useDemoStore } from "@/lib/store"
-import type { CashCategory, CashEntry, CashKind, Payment, PaymentStatus } from "@/lib/types"
+import type { Associate, CashCategory, CashEntry, CashKind, Payment, PaymentStatus } from "@/lib/types"
 
 const INCOME_CATEGORIES: CashCategory[] = ["consulta", "mensalidade", "exame", "outro"]
 const EXPENSE_CATEGORIES: CashCategory[] = ["aluguel", "salario", "material", "transporte", "outro"]
@@ -34,6 +34,8 @@ const CATEGORY_LABEL: Record<CashCategory, string> = {
 export function FinanceView() {
   const data = useDemoStore((state) => state.data)
   const cashEntries = useDemoStore((state) => state.cashEntries)
+  const associates = useDemoStore((state) => state.associates)
+  const associateFee = useDemoStore((state) => state.associateRules.fee)
   const settlePayment = useDemoStore((state) => state.settlePayment)
   const removeCashEntry = useDemoStore((state) => state.removeCashEntry)
   const [filter, setFilter] = useState<PaymentStatus | "all">("all")
@@ -44,20 +46,21 @@ export function FinanceView() {
   const month = monthKey(now)
   const manualIncome = sumEntries(cashEntries, "income", month)
   const manualExpense = sumEntries(cashEntries, "expense", month)
-  const monthRevenue = metrics.revenue + manualIncome
+  const membershipIncome = membershipForMonth(associates, associateFee, month)
+  const monthRevenue = metrics.revenue + manualIncome + membershipIncome
   const balance = monthRevenue - manualExpense
   const pending = sumAmount(data.payments.filter((item) => item.status === "pending"))
   const rows = data.payments.filter((item) => filter === "all" || item.status === filter)
-  const series = withManualIncome(metrics.series, cashEntries, now)
-  const monthly = withManualMonthly(metrics.monthly, cashEntries, now)
+  const series = withManualIncome(metrics.series, cashEntries, associates, associateFee, now)
+  const monthly = withManualMonthly(metrics.monthly, cashEntries, associates, associateFee, now)
 
   return (
     <FadeIn className="space-y-5">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-teal">Pagamentos simulados</p>
+        <p className="section-kicker">Pagamentos simulados</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Financeiro</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Os pagamentos do aplicativo entram sozinhos. O dono também lança outras receitas e as saídas da clínica. Nenhum valor foi cobrado de verdade.
+          Os pagamentos do aplicativo e as mensalidades dos associados entram sozinhos. O dono também lança outras receitas e as saídas da clínica. Nenhum valor foi cobrado de verdade.
         </p>
       </div>
       <div className="flex justify-end">
@@ -67,7 +70,7 @@ export function FinanceView() {
         <article className="rounded-3xl bg-brand p-5 text-white">
           <p className="text-sm text-white/70">Receita do mês</p>
           <p className="mt-2 text-3xl font-semibold">{formatMoney(monthRevenue)}</p>
-          <p className="mt-1 text-xs text-white/70">Consultas recebidas mais receitas lançadas.</p>
+          <p className="mt-1 text-xs text-white/70">Consultas, mensalidades dos associados e receitas lançadas. {formatMoney(membershipIncome)} vêm dos associados ativos.</p>
         </article>
         <article className="panel p-5">
           <p className="text-sm text-muted-foreground">Saídas do mês</p>
@@ -92,6 +95,7 @@ export function FinanceView() {
           <MonthlyBars data={monthly} />
         </div>
       </section>
+      <AssociateMemberships associates={associates} fee={associateFee} />
       <CashLedger entries={cashEntries} onRemove={(id) => { removeCashEntry(id); toast.success("Lançamento removido.") }} />
       <div className="panel overflow-hidden">
         <div className="flex items-center justify-between gap-3 p-4">
@@ -147,6 +151,44 @@ export function FinanceView() {
       <ReceiptDialog payment={receipt} onOpenChange={(open) => !open && setReceipt(null)} />
       <CashEntryDialog open={formOpen} onOpenChange={setFormOpen} />
     </FadeIn>
+  )
+}
+
+function AssociateMemberships({ associates, fee }: { associates: Associate[]; fee: number }) {
+  const activeCount = associates.filter((associate) => associate.status === "active").length
+  return (
+    <div className="panel overflow-hidden">
+      <div className="p-4">
+        <h2 className="text-lg font-semibold">Mensalidades dos associados</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Puxado do cadastro de associados. Cada ativo entra com {formatMoney(fee)} neste mês. Total: {formatMoney(activeCount * fee)}.
+        </p>
+      </div>
+      {associates.length === 0 ? (
+        <EmptyState icon={IdCard} title="Nenhum associado cadastrado" description="Quando a clínica cadastrar um associado ativo, a mensalidade aparece aqui e soma na receita." />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Associado</TableHead>
+              <TableHead>CPF fictício</TableHead>
+              <TableHead>Situação</TableHead>
+              <TableHead>Mensalidade</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {associates.map((associate) => (
+              <TableRow key={associate.id}>
+                <TableCell className="font-medium">{associate.name}</TableCell>
+                <TableCell>{associate.cpf}</TableCell>
+                <TableCell>{associate.status === "active" ? "Ativo" : "Inativo"}</TableCell>
+                <TableCell>{formatMoney(associate.status === "active" ? fee : 0)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
   )
 }
 
@@ -299,23 +341,64 @@ function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
 }
 
-function withManualIncome(series: Array<{ label: string; revenue: number; appointments: number }>, entries: CashEntry[], now: Date) {
+function withManualIncome(
+  series: Array<{ label: string; revenue: number; appointments: number }>,
+  entries: CashEntry[],
+  associates: Associate[],
+  fee: number,
+  now: Date,
+) {
   const year = now.getFullYear()
+  const monthIndex = now.getMonth()
   return series.map((point) => {
     const [day, month] = point.label.split("/")
     const key = `${year}-${month}-${day}`
     const extra = entries.reduce((total, entry) => (entry.kind === "income" && entry.occurredOn === key ? total + entry.amount : total), 0)
-    return { ...point, revenue: point.revenue + extra }
+    const membership = membershipOnDay(associates, fee, key, year, monthIndex)
+    return { ...point, revenue: point.revenue + extra + membership }
   })
 }
 
-function withManualMonthly(monthly: Array<{ label: string; revenue: number }>, entries: CashEntry[], now: Date) {
+function withManualMonthly(
+  monthly: Array<{ label: string; revenue: number }>,
+  entries: CashEntry[],
+  associates: Associate[],
+  fee: number,
+  now: Date,
+) {
   return monthly.map((point, index) => {
     const start = new Date(now.getFullYear(), now.getMonth() - (monthly.length - 1 - index), 1)
     const key = monthKey(start)
     const extra = sumEntries(entries, "income", key)
-    return { ...point, revenue: point.revenue + extra }
+    return { ...point, revenue: point.revenue + extra + membershipForMonth(associates, fee, key) }
   })
+}
+
+function membershipForMonth(associates: Associate[], fee: number, month: string) {
+  if (fee <= 0) return 0
+  return associates.reduce((total, associate) => {
+    if (associate.status !== "active") return total
+    return associate.createdAt.slice(0, 7) <= month ? total + fee : total
+  }, 0)
+}
+
+function membershipOnDay(associates: Associate[], fee: number, dayKey: string, year: number, monthIndex: number) {
+  if (fee <= 0) return 0
+  return associates.reduce((total, associate) => {
+    if (associate.status !== "active") return total
+    return billingDay(associate.createdAt, year, monthIndex) === dayKey ? total + fee : total
+  }, 0)
+}
+
+function billingDay(createdAt: string, year: number, monthIndex: number) {
+  const [createdYear, createdMonth, createdDay] = createdAt.slice(0, 10).split("-").map(Number)
+  const month = `${year}-${String(monthIndex + 1).padStart(2, "0")}`
+  const createdMonthKey = `${createdYear}-${String(createdMonth).padStart(2, "0")}`
+  if (createdMonthKey > month) return ""
+  if (createdMonthKey === month) return createdAt.slice(0, 10)
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate()
+  const day = Math.min(createdDay || 1, lastDay)
+  return `${month}-${String(day).padStart(2, "0")}`
 }
 
 function formatDay(value: string) {

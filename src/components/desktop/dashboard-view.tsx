@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { isSameDay } from "date-fns"
+import { CalendarDays, IdCard, Users, Wallet } from "lucide-react"
 import { AppointmentBars, RevenueArea } from "@/components/desktop/charts"
 import { FadeIn } from "@/components/shared/fade-in"
 import { StatusBadge } from "@/components/shared/status-badge"
@@ -21,12 +22,14 @@ const PERIODS: Array<{ id: DashboardPeriod; label: string }> = [
 
 export function DashboardView() {
   const data = useDemoStore((state) => state.data)
+  const associates = useDemoStore((state) => state.associates)
   const period = useDemoStore((state) => state.dashboardPeriod)
   const setPeriod = useDemoStore((state) => state.setDashboardPeriod)
   const [chart, setChart] = useState<"revenue" | "appointments">("revenue")
   const now = useMemo(() => new Date(), [])
   const metrics = computeDashboard(data, period, now)
   const alerts = buildNotifications(data, now).slice(0, 3)
+  const activeAssociates = associates.filter((item) => item.status === "active").length
   const today = data.appointments
     .filter((item) => item.status !== "cancelled" && isSameDay(new Date(item.startsAt), now))
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
@@ -35,7 +38,8 @@ export function DashboardView() {
     <FadeIn className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">{formatDate(now, "EEEE, d 'de' MMMM")}</p>
+          <p className="section-kicker">{data.clinic.city}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{formatDate(now, "EEEE, d 'de' MMMM")}</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">{greeting(now)}, {data.clinic.name}</h1>
         </div>
         <div className="flex rounded-xl bg-white p-1 ring-1 ring-foreground/10" role="group" aria-label="Período dos indicadores">
@@ -59,12 +63,21 @@ export function DashboardView() {
           <p className="mt-2 text-sm text-white/75">
             {metrics.revenueDelta >= 0 ? "Alta" : "Queda"} de {percent(Math.abs(metrics.revenueDelta))} em relação ao período anterior.
           </p>
-          <p className="mt-6 text-xs text-white/60">Valores calculados somente com pagamentos fictícios.</p>
+          <dl className="mt-6 grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-2xl bg-white/8 px-3 py-2">
+              <dt className="text-white/60">Pendentes</dt>
+              <dd className="mt-1 font-medium">{formatMoney(metrics.pending)}</dd>
+            </div>
+            <div className="rounded-2xl bg-white/8 px-3 py-2">
+              <dt className="text-white/60">Associados ativos</dt>
+              <dd className="mt-1 font-medium">{activeAssociates}</dd>
+            </div>
+          </dl>
         </article>
         <div className="grid gap-4 sm:grid-cols-3 lg:col-span-7">
-          <Metric label="Consultas de hoje" value={String(metrics.todayCount)} detail="Sem contar cancelamentos" />
-          <Metric label="Pacientes atendidos" value={String(metrics.patientsSeen)} detail="Consultas realizadas no período" />
-          <Metric label="Ocupação" value={percent(metrics.occupancy)} detail={`${formatMoney(metrics.pending)} pendentes`} progress={metrics.occupancy * 100} />
+          <Metric icon={CalendarDays} label="Consultas de hoje" value={String(metrics.todayCount)} detail="Sem contar cancelamentos" href="/desktop/agenda" />
+          <Metric icon={Users} label="Pacientes atendidos" value={String(metrics.patientsSeen)} detail="Consultas realizadas no período" href="/desktop/pacientes" />
+          <Metric icon={Wallet} label="Ocupação" value={percent(metrics.occupancy)} detail={`${formatMoney(metrics.pending)} pendentes`} progress={metrics.occupancy * 100} href="/desktop/financeiro" />
         </div>
       </section>
 
@@ -97,9 +110,9 @@ export function DashboardView() {
               const patient = data.patients.find((person) => person.id === item.patientId)
               const professional = data.professionals.find((person) => person.id === item.professionalId)
               return (
-                <li key={item.id} className="flex gap-3">
+                <li key={item.id} className="flex gap-3 rounded-2xl bg-muted/60 px-3 py-2.5">
                   <span className="w-12 pt-0.5 text-sm font-medium text-primary">{formatDate(item.startsAt, "HH:mm")}</span>
-                  <span className="min-w-0 flex-1 border-l border-border pl-3">
+                  <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{patient?.name}</span>
                     <span className="block truncate text-xs text-muted-foreground">{professional?.name}</span>
                     <span className="mt-1 inline-flex"><StatusBadge status={item.status} /></span>
@@ -111,30 +124,46 @@ export function DashboardView() {
         </div>
       </section>
 
-      <section className="panel p-5">
-        <h2 className="text-lg font-semibold">Alertas operacionais</h2>
-        <ul className="mt-4 grid gap-3 lg:grid-cols-3">
-          {alerts.map((alert) => (
-            <li key={alert.id}>
-              <Link href={alert.href} className="block h-full rounded-2xl bg-muted/70 px-4 py-3 hover:bg-accent">
-                <span className="block text-sm font-medium">{alert.title}</span>
-                <span className="mt-1 block text-sm text-muted-foreground">{alert.body}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+      <section className="grid gap-4 lg:grid-cols-4">
+        <Link href="/desktop/associados" className="panel flex items-center gap-3 p-4 hover:bg-accent/40">
+          <span className="grid size-10 place-items-center rounded-2xl bg-accent text-teal"><IdCard className="size-4" /></span>
+          <span>
+            <span className="block text-sm font-medium">Associados</span>
+            <span className="block text-xs text-muted-foreground">{activeAssociates} ativos neste cadastro</span>
+          </span>
+        </Link>
+        {alerts.map((alert) => (
+          <Link key={alert.id} href={alert.href} className="panel p-4 hover:bg-accent/40">
+            <span className="block text-sm font-medium">{alert.title}</span>
+            <span className="mt-1 block text-sm text-muted-foreground">{alert.body}</span>
+          </Link>
+        ))}
       </section>
     </FadeIn>
   )
 }
 
-function Metric({ label, value, detail, progress }: { label: string; value: string; detail: string; progress?: number }) {
+function Metric({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  progress,
+  href,
+}: {
+  icon: typeof CalendarDays
+  label: string
+  value: string
+  detail: string
+  progress?: number
+  href: string
+}) {
   return (
-    <article className="panel flex flex-col justify-between p-5">
-      <p className="text-sm text-muted-foreground">{label}</p>
+    <Link href={href} className="panel flex flex-col justify-between p-5 hover:bg-accent/30">
+      <p className="flex items-center gap-2 text-sm text-muted-foreground"><Icon className="size-4 text-teal" /> {label}</p>
       <p className="mt-3 text-3xl font-semibold tracking-tight">{value}</p>
       {typeof progress === "number" ? <Progress value={progress} className="mt-3" /> : null}
       <p className="mt-3 text-xs text-muted-foreground">{detail}</p>
-    </article>
+    </Link>
   )
 }

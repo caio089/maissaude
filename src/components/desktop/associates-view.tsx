@@ -77,7 +77,8 @@ export function AssociatesView() {
     <FadeIn className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Associados</h1>
+          <p className="section-kicker">Assinaturas</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Associados</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Quem está ativo paga {formatMoney(rules.fee)} e recebe o pacote de direitos. O cadastro fica neste navegador.
           </p>

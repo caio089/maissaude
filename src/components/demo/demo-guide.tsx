@@ -9,12 +9,12 @@ import { Button } from "@/components/ui/button"
 import { useDemoStore } from "@/lib/store"
 
 const STEPS = [
-  { title: "Abrir o dashboard", text: "Mostre consultas de hoje, receita e ocupação. Troque o período para os números se atualizarem.", href: "/desktop", label: "Abrir painel" },
-  { title: "Agenda e financeiro", text: "Percorra a semana, abra uma consulta e depois o financeiro com a marca de simulação.", href: "/desktop/agenda", label: "Abrir agenda" },
-  { title: "Aplicativo do paciente", text: "Abra o app e crie a conta com nome, CPF fictício começando em 900 e uma senha de demonstração.", href: "/mobile", label: "Abrir app" },
-  { title: "Especialidade e médico", text: "Escolha a especialidade e, em seguida, o profissional.", href: "/mobile", label: "Continuar no app" },
-  { title: "Dia, hora e pagamento", text: "Escolha um horário livre e simule o pagamento aprovado. Use o cartão 0000 0000 0000 0000, validade 12/30 e CVV 000 se for cartão.", href: "/mobile", label: "Agendar" },
-  { title: "WhatsApp e painel", text: "A tela final abre o WhatsApp com a confirmação. A consulta e o pagamento já estão na agenda e no financeiro.", href: "/desktop/agenda", label: "Ver na agenda" },
+  { title: "Entrar no painel", text: "Abra a rota /desktop/entrar e entre com o acesso da equipe. A conta do paciente não passa." },
+  { title: "Agenda e financeiro", text: "No painel, percorra a semana, abra uma consulta e depois o financeiro com a marca de simulação. Rotas: /desktop/agenda e /desktop/financeiro." },
+  { title: "Aplicativo do paciente", text: "Em outra janela, abra a rota /mobile e crie a conta com nome, CPF fictício começando em 900 e uma senha de demonstração." },
+  { title: "Especialidade e médico", text: "No aplicativo, escolha a especialidade e, em seguida, o profissional." },
+  { title: "Dia, hora e pagamento", text: "Escolha um horário livre e simule o pagamento aprovado. Use o cartão 0000 0000 0000 0000, validade 12/30 e CVV 000 se for cartão." },
+  { title: "WhatsApp e painel", text: "A tela final abre o WhatsApp com a confirmação. A consulta e o pagamento já estão na agenda e no financeiro do painel." },
 ]
 
 export function DemoGuide() {
@@ -35,13 +35,10 @@ export function DemoGuide() {
         </p>
         <ol className="mt-8 space-y-3">
           {STEPS.map((step, index) => (
-            <li key={step.title} className="flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-white p-5 ring-1 ring-foreground/10">
-              <div>
-                <p className="text-xs text-teal">Passo {index + 1}</p>
-                <h2 className="text-lg font-semibold">{step.title}</h2>
-                <p className="mt-1 max-w-xl text-sm text-muted-foreground">{step.text}</p>
-              </div>
-              <Button asChild variant="outline"><Link href={step.href}>{step.label}</Link></Button>
+            <li key={step.title} className="rounded-3xl bg-white p-5 ring-1 ring-foreground/10">
+              <p className="text-xs text-teal">Passo {index + 1}</p>
+              <h2 className="text-lg font-semibold">{step.title}</h2>
+              <p className="mt-1 max-w-xl text-sm text-muted-foreground">{step.text}</p>
             </li>
           ))}
         </ol>

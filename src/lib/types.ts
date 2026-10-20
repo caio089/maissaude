@@ -181,6 +181,29 @@ export interface MobileAccount {
   passwordHash: string
 }
 
+export type CatalogKind = "consulta" | "exame" | "cirurgia"
+
+export interface CartLine {
+  key: string
+  kind: CatalogKind
+  professionalId: string
+  serviceId: string
+  serviceName: string
+  price: number
+  durationMin: number
+  date: string
+  time: string
+}
+
+export interface CheckoutItem {
+  serviceName: string
+  professionalName: string
+  specialtyLabel: string
+  startsAt: string
+  amount: number
+  kind: CatalogKind
+}
+
 export interface CheckoutReceipt {
   reference: string
   appointmentId: string | null
@@ -188,6 +211,7 @@ export interface CheckoutReceipt {
   amount: number
   method: PaymentMethod
   associateBenefit?: AssociateBenefitSnapshot | null
+  items?: CheckoutItem[]
 }
 
 export interface AssociateBenefitSnapshot {

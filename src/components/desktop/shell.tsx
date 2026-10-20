@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   Bell,
   CalendarDays,
@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { clinicGate, logoutClinic } from "@/lib/clinic-actions"
 import { buildNotifications } from "@/lib/metrics"
 import { useDemoStore } from "@/lib/store"
 
@@ -57,6 +58,10 @@ export function DesktopShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
   const current = NAV.find((item) => isActive(pathname, item.href))
+
+  useEffect(() => {
+    void clinicGate()
+  }, [pathname])
 
   return (
     <div className="min-h-dvh bg-background lg:grid lg:grid-cols-[252px_minmax(0,1fr)]">
@@ -102,10 +107,13 @@ export function DesktopShell({ children }: { children: React.ReactNode }) {
 }
 
 function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+  const clinic = useDemoStore((state) => state.data.clinic)
   return (
     <div className="flex h-full flex-col">
       <div className="px-5 py-5">
         <Logo light />
+        <p className="mt-4 text-sm font-medium text-white">{clinic.name}</p>
+        <p className="text-xs text-sidebar-foreground/65">{clinic.city}</p>
       </div>
       <nav className="flex-1 space-y-1 px-3" aria-label="Painel da clínica">
         {NAV.map((item) => {
@@ -126,18 +134,9 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
           )
         })}
       </nav>
-      <div className="space-y-2 p-4">
-        <Link
-          href="/mobile"
-          onClick={onNavigate}
-          className="block rounded-xl bg-white/8 px-3 py-3 text-sm text-sidebar-foreground hover:bg-white/12"
-        >
-          <span className="block font-medium">Aplicativo do paciente</span>
-          <span className="text-xs text-sidebar-foreground/70">Abrir a experiência mobile</span>
-        </Link>
-        <Link href="/demo" onClick={onNavigate} className="block px-1 text-xs text-sidebar-foreground/70 hover:text-white">
-          Roteiro da apresentação
-        </Link>
+      <div className="px-5 py-4">
+        <p className="text-xs font-medium text-sidebar-foreground/80">Acesso da equipe</p>
+        <p className="mt-1 text-xs leading-5 text-sidebar-foreground/55">{clinic.phone}</p>
       </div>
     </div>
   )
@@ -230,14 +229,15 @@ function ClinicMenu() {
             <span className="block font-normal text-muted-foreground">{clinic.city}</span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <Link href="/demo">Roteiro da apresentação</Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href="/mobile">Abrir app do paciente</Link>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setConfirm(true)}>Reiniciar demonstração</DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault()
+              void logoutClinic()
+            }}
+          >
+            Sair do painel
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <ConfirmDialog

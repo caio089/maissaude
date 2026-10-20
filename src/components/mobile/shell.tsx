@@ -34,8 +34,9 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
 function AccountGate() {
   return (
     <div className="px-5 pt-10">
-      <h1 className="text-2xl font-semibold">Crie sua conta para continuar</h1>
-      <p className="mt-2 text-sm text-muted-foreground">O agendamento começa com CPF e senha de demonstração.</p>
+      <p className="section-kicker">Aplicativo do paciente</p>
+      <h1 className="mt-2 text-2xl font-semibold">Crie sua conta para continuar</h1>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">O pedido começa com CPF, nome, WhatsApp, nascimento e senha de demonstração.</p>
       <Button asChild className="mt-5 h-12 w-full"><Link href="/mobile">Criar conta</Link></Button>
     </div>
   )
@@ -49,7 +50,7 @@ function BottomNav() {
         const active = item.href === "/mobile" ? pathname === item.href : pathname.startsWith(item.href)
         const Icon = item.icon
         return (
-          <Link key={item.href} href={item.href} className={`flex flex-col items-center gap-1 rounded-xl py-1 text-[11px] ${active ? "text-teal" : "text-muted-foreground"}`}>
+          <Link key={item.href} href={item.href} className={`flex flex-col items-center gap-1 rounded-xl py-1.5 text-[11px] ${active ? "bg-accent font-medium text-teal" : "text-muted-foreground"}`}>
             <Icon className="size-5" />
             {item.label}
           </Link>

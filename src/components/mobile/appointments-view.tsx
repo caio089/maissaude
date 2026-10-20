@@ -40,8 +40,10 @@ export function MobileAppointments() {
   }
 
   return (
-    <div className="px-5 pt-5 pb-6">
-      <h1 className="text-2xl font-semibold">Consultas</h1>
+    <div className="px-4 pt-5 pb-6">
+      <p className="section-kicker">Sua agenda</p>
+      <h1 className="mt-1 text-2xl font-semibold">Consultas</h1>
+      <p className="mt-1 text-sm text-muted-foreground">{upcoming.length} {upcoming.length === 1 ? "próxima" : "próximas"} · {previous.length} anteriores</p>
       <Tabs defaultValue="proximas" className="mt-4">
         <TabsList className="w-full">
           <TabsTrigger value="proximas">Próximas</TabsTrigger>
@@ -78,19 +80,21 @@ export function MobileAppointments() {
 
 function List({ items, empty, onOpen }: { items: Appointment[]; empty: string; onOpen: (id: string) => void }) {
   const data = useDemoStore((state) => state.data)
-  if (items.length === 0) return <p className="px-1 py-8 text-sm text-muted-foreground">{empty}</p>
+  if (items.length === 0) return <p className="mt-3 rounded-2xl bg-white px-4 py-6 text-sm text-muted-foreground ring-1 ring-border">{empty}</p>
   return (
     <div className="mt-3 space-y-3">
       {items
         .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
         .map((item) => {
           const professional = data.professionals.find((person) => person.id === item.professionalId)
+          const service = professional?.services.find((entry) => entry.id === item.serviceId)
           return (
-            <button key={item.id} type="button" onClick={() => onOpen(item.id)} className="block w-full rounded-3xl bg-white p-4 text-left ring-1 ring-border">
+            <button key={item.id} type="button" onClick={() => onOpen(item.id)} className="surface-card block w-full p-4 text-left">
               <span className="flex items-center justify-between gap-2">
                 <span className="font-medium">{professional?.name}</span>
                 <StatusBadge status={item.status} />
               </span>
+              <span className="mt-1 block text-sm text-muted-foreground">{service?.name ?? "Consulta de demonstração"}</span>
               <span className="mt-1 block text-sm text-muted-foreground">{formatDate(item.startsAt, "EEEE, d 'de' MMMM 'às' HH:mm")}</span>
             </button>
           )

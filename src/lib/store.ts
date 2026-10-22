@@ -25,6 +25,7 @@ import {
   type DashboardPeriod,
   type DemoData,
   type MobileFilters,
+  type Patient,
   type PatientInput,
   type PaymentMethod,
   type Professional,
@@ -69,6 +70,7 @@ export interface DemoStore {
   registerMobileAccount: (input: { name: string; cpf: string; phone: string; birthDate: string; passwordHash: string }) => { ok: true } | { ok: false; message: string }
   loginMobileAccount: (input: { cpf: string; passwordHash: string }) => { ok: true } | { ok: false; message: string }
   logoutMobileAccount: () => void
+  adoptPatientSession: (patient: Patient) => void
   clearCheckout: () => void
   markNotificationsRead: () => void
   createPatient: (input: PatientInput) => string
@@ -261,6 +263,22 @@ export const useDemoStore = create<DemoStore>()(
         return { ok: true }
       },
       logoutMobileAccount: () => set({ mobileSessionPatientId: null, booking: emptyBooking(), lastCheckout: null }),
+      adoptPatientSession: (patient) =>
+        set((state) => {
+          const exists = state.data.patients.some((item) => item.id === patient.id)
+          return {
+            mobileSessionPatientId: patient.id,
+            lastCheckout: null,
+            booking: emptyBooking(),
+            data: {
+              ...state.data,
+              currentPatientId: patient.id,
+              patients: exists
+                ? state.data.patients.map((item) => (item.id === patient.id ? { ...item, ...patient } : item))
+                : [patient, ...state.data.patients],
+            },
+          }
+        }),
       clearCheckout: () => set({ lastCheckout: null, booking: emptyBooking() }),
       markNotificationsRead: () =>
         set((state) => ({

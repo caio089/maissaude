@@ -9,6 +9,7 @@ import { Portrait } from "@/components/shared/portrait"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { logoutPatientAccount } from "@/lib/auth/patient-actions"
 import { buildNotifications } from "@/lib/metrics"
 import { useDemoStore } from "@/lib/store"
 import { DEMO_CITIES } from "@/lib/types"
@@ -111,7 +112,7 @@ export function MobileProfile() {
           </article>
         ))}
       </section>
-      <Button type="button" variant="outline" className="w-full" onClick={() => { logoutMobileAccount(); toast.success("Conta encerrada nesta demonstração.") }}>Sair da conta</Button>
+      <Button type="button" variant="outline" className="w-full" onClick={() => { void logoutPatientAccount(); logoutMobileAccount(); toast.success("Sessão encerrada.") }}>Sair da conta</Button>
       <Button type="button" variant="destructive" className="w-full" onClick={() => setConfirm(true)}>Sair do modo demonstração</Button>
       <ConfirmDialog
         open={confirm}

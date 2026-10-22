@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useActionState } from "react"
 import { Field } from "@/components/shared/field"
 import { Button } from "@/components/ui/button"
@@ -36,6 +37,9 @@ export function ClinicLoginForm() {
       <Button type="submit" className="h-11 w-full" disabled={pending}>
         {pending ? "Entrando…" : "Entrar no painel"}
       </Button>
+      <p className="text-center text-sm">
+        <Link href="/auth/recuperar" className="text-teal hover:underline">Esqueci a senha</Link>
+      </p>
     </form>
   )
 }

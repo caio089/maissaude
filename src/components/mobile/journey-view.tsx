@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useState } from "react"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
@@ -10,8 +11,9 @@ import { FlowSteps } from "@/components/shared/flow-steps"
 import { Logo } from "@/components/brand/logo"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { loginPatientAccount, registerPatientAccount } from "@/lib/auth/patient-actions"
+import { AUTH_PASSWORD_MIN } from "@/lib/auth/constants"
 import { associateQuote, findActiveAssociate } from "@/lib/associate-rules"
-import { hashDemoPassword } from "@/lib/demo-password"
 import { formatDate, formatMoney } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
 import type { CartLine, PaymentMethod } from "@/lib/types"
@@ -34,15 +36,16 @@ export function MobileJourney() {
 }
 
 function AccountStep() {
-  const registerMobileAccount = useDemoStore((state) => state.registerMobileAccount)
-  const loginMobileAccount = useDemoStore((state) => state.loginMobileAccount)
+  const adoptPatientSession = useDemoStore((state) => state.adoptPatientSession)
   const subscribeCurrentPatient = useDemoStore((state) => state.subscribeCurrentPatient)
+  const city = useDemoStore((state) => state.mobileCity)
   const [mode, setMode] = useState<"create" | "login">("create")
   const [stage, setStage] = useState<"form" | "offer" | "pay">("form")
   const [name, setName] = useState("")
   const [cpf, setCpf] = useState("")
   const alreadyAssociate = useDemoStore((state) => findActiveAssociate(state.associates, cpf.trim()))
   const [phone, setPhone] = useState("")
+  const [email, setEmail] = useState("")
   const [birthDate, setBirthDate] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -50,10 +53,11 @@ function AccountStep() {
 
   function accountError() {
     if (!CPF_PATTERN.test(cpf.trim())) return "Use um CPF fictício começando com 900, no formato 900.000.000-00."
-    if (password.trim().length < 4) return "A senha de demonstração precisa ter ao menos 4 caracteres."
+    if (password.trim().length < AUTH_PASSWORD_MIN) return `A senha precisa ter ao menos ${AUTH_PASSWORD_MIN} caracteres.`
     if (mode === "login") return ""
-    if (name.trim().length < 3) return "Informe o nome da conta de demonstração."
+    if (name.trim().length < 3) return "Informe o nome da conta."
     if (!PHONE_PATTERN.test(phone.trim())) return "Use um WhatsApp fictício no formato (86) 99000-0000."
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return "Informe um e-mail válido. Ele é usado para recuperar a senha."
     if (!birthDate) return "Informe uma data de nascimento fictícia."
     return ""
   }
@@ -66,16 +70,16 @@ function AccountStep() {
       return
     }
     setPending(true)
-    const passwordHash = await hashDemoPassword(password)
     const result = mode === "create"
-      ? registerMobileAccount({ name, cpf, phone, birthDate, passwordHash })
-      : loginMobileAccount({ cpf, passwordHash })
+      ? await registerPatientAccount({ name, cpf, phone, email, birthDate, password, city })
+      : await loginPatientAccount({ cpf, password })
     if (!result.ok) {
       setPending(false)
       setError(result.message)
       setStage("form")
       return
     }
+    adoptPatientSession(result.patient)
     if (subscribe) {
       const joined = subscribeCurrentPatient()
       if (!joined.ok) toast.error(joined.message)
@@ -148,6 +152,9 @@ function AccountStep() {
             <label className="block text-sm">Data de nascimento
               <Input className="mt-1 h-12" type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />
             </label>
+            <label className="block text-sm">E-mail
+              <Input className="mt-1 h-12" type="email" placeholder="voce@email.com" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
+            </label>
           </>
         ) : null}
         <label className="block text-sm">Senha
@@ -158,6 +165,7 @@ function AccountStep() {
           {pending ? <Loader2 className="animate-spin" /> : null}
           {mode === "create" ? "Continuar" : "Entrar"}
         </Button>
+        <Link href="/auth/recuperar" className="block w-full text-center text-sm text-teal">Esqueci a senha</Link>
         <button type="button" className="w-full text-sm text-teal" onClick={() => { setMode(mode === "create" ? "login" : "create"); setError("") }}>
           {mode === "create" ? "Já tenho conta" : "Criar uma conta"}
         </button>

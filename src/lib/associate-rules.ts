@@ -4,6 +4,7 @@ import {
   type AssociateBenefitSnapshot,
   type AssociateRules,
 } from "@/lib/types"
+import { cpfDigits } from "@/lib/cpf"
 
 export const DEFAULT_ASSOCIATE_RULES: AssociateRules = {
   fee: ASSOCIATE_FEE,
@@ -43,8 +44,8 @@ export function associateRulesError(rules: AssociateRules) {
 }
 
 export function findActiveAssociate(associates: Associate[], cpf: string) {
-  const normalized = cpf.trim()
-  return associates.find((associate) => associate.status === "active" && associate.cpf.trim() === normalized) ?? null
+  const normalized = cpfDigits(cpf)
+  return associates.find((associate) => associate.status === "active" && cpfDigits(associate.cpf) === normalized) ?? null
 }
 
 export function associateQuote(listPrice: number, rules: AssociateRules, associate: Associate | null) {

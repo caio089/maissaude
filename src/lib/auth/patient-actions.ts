@@ -9,6 +9,7 @@ import {
   persistPatientAccount,
 } from "@/lib/auth/patients"
 import { toDateKey } from "@/lib/format"
+import { cpfDigits, isValidCpf } from "@/lib/cpf"
 import { createSupabaseAdmin, isSupabaseAdminConfigured } from "@/lib/supabase/admin"
 import { isSupabaseBrowserConfigured } from "@/lib/supabase/env"
 import { createServerSupabase } from "@/lib/supabase/server"
@@ -81,7 +82,7 @@ export async function loginPatientAccount(input: {
 }): Promise<PatientAuthResult> {
   const configError = authConfigError()
   if (configError) return configError
-  const cpf = input.cpf.trim()
+  const cpf = cpfDigits(input.cpf)
   const password = input.password
   if (!CPF_PATTERN.test(cpf) || password.length < AUTH_PASSWORD_MIN) {
     return { ok: false, message: "CPF ou senha não conferem." }
@@ -187,7 +188,7 @@ function validateRegister(input: {
   city: string
 } {
   const name = input.name.trim()
-  const cpf = input.cpf.trim()
+  const cpf = cpfDigits(input.cpf)
   const phone = input.phone.trim()
   const email = input.email.trim().toLowerCase()
   const birthDate = input.birthDate.trim()
@@ -213,18 +214,4 @@ function friendlyAuthError(message: string) {
     return "Este e-mail já tem conta. Entre ou recupere a senha."
   }
   return message
-}
-
-function isValidCpf(value: string) {
-  const digits = value.replace(/\D/g, "")
-  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false
-  const digit = (length: number) => {
-    const total = digits
-      .slice(0, length)
-      .split("")
-      .reduce((sum, item, index) => sum + Number(item) * (length + 1 - index), 0)
-    const remainder = (total * 10) % 11
-    return remainder === 10 ? 0 : remainder
-  }
-  return digit(9) === Number(digits[9]) && digit(10) === Number(digits[10])
 }

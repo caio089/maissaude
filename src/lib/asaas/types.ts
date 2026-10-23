@@ -30,6 +30,10 @@ export type AsaasPayment = {
   deleted?: boolean
 }
 
+export type AsaasPaymentList = {
+  data?: AsaasPayment[]
+}
+
 export type AsaasPixQrCode = {
   encodedImage?: string
   payload?: string

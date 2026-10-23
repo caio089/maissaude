@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatDate, formatMoney } from "@/lib/format"
+import { cpfDigits, formatCpf } from "@/lib/cpf"
 import { useDemoStore } from "@/lib/store"
 import type { Associate, AssociateInput, PatientStatus } from "@/lib/types"
 import { hasErrors, validateAssociateInput, type FieldErrors } from "@/lib/validation"
@@ -25,8 +26,10 @@ export function AssociatesView() {
   const [query, setQuery] = useState("")
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Associate | null>(null)
-  const [form, setForm] = useState<AssociateInput>(() => emptyAssociateForm(associates))
+  const [form, setForm] = useState<AssociateInput>(() => emptyAssociateForm())
   const [errors, setErrors] = useState<FieldErrors<keyof AssociateInput>>({})
+  const [payment, setPayment] = useState<{ value: number; payload: string | null; encodedImage: string | null; invoiceUrl: string | null } | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase()
@@ -38,7 +41,7 @@ export function AssociatesView() {
 
   function openCreate() {
     setEditing(null)
-    setForm(emptyAssociateForm(associates))
+    setForm(emptyAssociateForm())
     setErrors({})
     setFormOpen(true)
   }
@@ -56,20 +59,53 @@ export function AssociatesView() {
     setFormOpen(true)
   }
 
-  function save() {
-    const nextErrors = validateAssociateInput(form)
+  async function save() {
+    const normalizedForm = { ...form, cpf: cpfDigits(form.cpf), phone: form.phone.trim(), email: form.email.trim().toLowerCase() }
+    const nextErrors = validateAssociateInput(normalizedForm)
     const others = associates.filter((associate) => associate.id !== editing?.id)
-    if (others.some((associate) => associate.cpf.trim() === form.cpf.trim())) {
+    if (others.some((associate) => cpfDigits(associate.cpf) === normalizedForm.cpf)) {
       nextErrors.cpf = "Este CPF já está cadastrado como associado."
     }
     setErrors(nextErrors)
     if (hasErrors(nextErrors)) return
-    const result = editing ? updateAssociate(editing.id, form) : createAssociate(form)
+    if (!editing) {
+      setSaving(true)
+      try {
+        const response = await fetch("/api/payments/associate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(normalizedForm),
+        })
+        const body = await response.json() as { error?: string; value?: number; pix?: { payload?: string | null; encodedImage?: string | null } | null; invoiceUrl?: string | null }
+        if (!response.ok || !body.value) {
+          toast.error(body.error || "Não foi possível gerar o Pix.")
+          return
+        }
+        const result = createAssociate({ ...normalizedForm, status: "inactive" })
+        if (!result.ok) {
+          toast.error(result.message)
+          return
+        }
+        setPayment({
+          value: body.value,
+          payload: body.pix?.payload || null,
+          encodedImage: body.pix?.encodedImage || null,
+          invoiceUrl: body.invoiceUrl || null,
+        })
+        setFormOpen(false)
+        toast.success("Cadastro criado e Pix gerado. A associação será ativada após a confirmação.")
+        return
+      } finally {
+        setSaving(false)
+      }
+    }
+
+    const result = updateAssociate(editing.id, normalizedForm)
     if (!result.ok) {
       toast.error(result.message)
       return
     }
-    toast.success(editing ? "Associado atualizado." : "Associado cadastrado.")
+    toast.success("Associado atualizado.")
     setFormOpen(false)
   }
 
@@ -80,7 +116,7 @@ export function AssociatesView() {
           <p className="section-kicker">Assinaturas</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Associados</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Quem está ativo paga {formatMoney(rules.fee)} e recebe o pacote de direitos. O cadastro fica neste navegador.
+            Cadastre presencialmente e gere o Pix da primeira mensalidade. A associação é ativada quando o Asaas confirmar o pagamento.
           </p>
         </div>
         <Button type="button" onClick={openCreate}><Plus /> Novo associado</Button>
@@ -149,7 +185,7 @@ export function AssociatesView() {
               <Input id="associate-name" className="h-10" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
             </Field>
             <Field label="CPF" htmlFor="associate-cpf" error={errors.cpf}>
-              <Input id="associate-cpf" className="h-10" value={form.cpf} onChange={(event) => setForm({ ...form, cpf: event.target.value })} />
+              <Input id="associate-cpf" className="h-10" inputMode="numeric" placeholder="Somente números" value={form.cpf} onChange={(event) => setForm({ ...form, cpf: formatCpf(event.target.value) })} />
             </Field>
             <Field label="Telefone" htmlFor="associate-phone" error={errors.phone}>
               <Input id="associate-phone" className="h-10" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
@@ -158,7 +194,7 @@ export function AssociatesView() {
               <Input id="associate-email" className="h-10" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
             </Field>
             <Field label="Status">
-              <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value as PatientStatus })}>
+              <Select value={form.status} disabled={!editing} onValueChange={(value) => setForm({ ...form, status: value as PatientStatus })}>
                 <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">Ativo</SelectItem>
@@ -166,33 +202,37 @@ export function AssociatesView() {
                 </SelectContent>
               </Select>
             </Field>
-            <p className="self-end text-sm text-muted-foreground">Mensalidade de {formatMoney(rules.fee)} e o pacote de direitos para associado ativo.</p>
+            <p className="self-end text-sm text-muted-foreground">Mensalidade de {formatMoney(rules.fee)}. Novos associados ficam pendentes até o Pix ser pago.</p>
           </div>
           <DialogFooter>
-            <Button type="button" onClick={save}>Salvar</Button>
+            <Button type="button" disabled={saving} onClick={() => void save()}>{saving ? "Gerando Pix..." : editing ? "Salvar" : "Cadastrar e gerar Pix"}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(payment)} onOpenChange={(open) => { if (!open) setPayment(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Pix da primeira mensalidade</DialogTitle></DialogHeader>
+          {payment ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">Valor: <strong className="text-foreground">{formatMoney(payment.value)}</strong>. Após a confirmação do Asaas, o associado será ativado.</p>
+              {payment.encodedImage ? <img className="mx-auto size-56" src={`data:image/png;base64,${payment.encodedImage}`} alt="QR Code Pix para pagamento da mensalidade" /> : null}
+              {payment.payload ? <Button type="button" variant="outline" className="w-full" onClick={() => { if (payment.payload) void navigator.clipboard.writeText(payment.payload).then(() => toast.success("Código Pix copiado.")) }}>Copiar código Pix</Button> : null}
+              {payment.invoiceUrl ? <Button asChild className="w-full"><a href={payment.invoiceUrl} target="_blank" rel="noreferrer">Abrir cobrança Asaas</a></Button> : null}
+              {!payment.encodedImage && !payment.payload ? <p className="rounded-xl bg-muted p-3 text-sm">A cobrança foi criada. Abra a cobrança Asaas para exibir o Pix.</p> : null}
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </FadeIn>
   )
 }
 
-function emptyAssociateForm(associates: Associate[]): AssociateInput {
-  const used = new Set(associates.flatMap((associate) => [associate.cpf, associate.phone, associate.email.toLowerCase()]))
-  for (let sequence = 1; sequence < 900; sequence += 1) {
-    const code = String(sequence).padStart(3, "0")
-    const cpf = `900.300.${code}-10`
-    const phone = `(86) 99100-${code}0`
-    const email = `associado.${code}@demonstracao.demo`
-    if (!used.has(cpf) && !used.has(phone) && !used.has(email)) {
-      return { name: "", cpf, phone, email, status: "active" }
-    }
-  }
+function emptyAssociateForm(): AssociateInput {
   return {
     name: "",
-    cpf: "900.300.900-10",
-    phone: "(86) 99100-9000",
-    email: "associado.extra@demonstracao.demo",
-    status: "active",
+    cpf: "",
+    phone: "",
+    email: "",
+    status: "inactive",
   }
 }

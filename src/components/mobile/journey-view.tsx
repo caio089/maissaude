@@ -15,10 +15,10 @@ import { loginPatientAccount, registerPatientAccount } from "@/lib/auth/patient-
 import { AUTH_PASSWORD_MIN } from "@/lib/auth/constants"
 import { associateQuote, findActiveAssociate } from "@/lib/associate-rules"
 import { formatDate, formatMoney } from "@/lib/format"
+import { cpfDigits, formatCpf, isValidCpf } from "@/lib/cpf"
 import { useDemoStore } from "@/lib/store"
 import type { CartLine, PaymentMethod } from "@/lib/types"
 
-const CPF_PATTERN = /^900\.\d{3}\.\d{3}-\d{2}$/
 const PHONE_PATTERN = /^\(\d{2}\) \d{5}-\d{4}$/
 type Stage = "catalog" | "confirm" | "pay"
 
@@ -42,7 +42,7 @@ function AccountStep() {
   const [stage, setStage] = useState<"form" | "offer" | "pay">("form")
   const [name, setName] = useState("")
   const [cpf, setCpf] = useState("")
-  const alreadyAssociate = useDemoStore((state) => findActiveAssociate(state.associates, cpf.trim()))
+  const alreadyAssociate = useDemoStore((state) => findActiveAssociate(state.associates, cpfDigits(cpf)))
   const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
   const [birthDate, setBirthDate] = useState("")
@@ -51,13 +51,13 @@ function AccountStep() {
   const [pending, setPending] = useState(false)
 
   function accountError() {
-    if (!CPF_PATTERN.test(cpf.trim())) return "Use um CPF fictício começando com 900, no formato 900.000.000-00."
+    if (!isValidCpf(cpf)) return "Informe um CPF válido. Você pode digitar só os números."
     if (password.trim().length < AUTH_PASSWORD_MIN) return `A senha precisa ter ao menos ${AUTH_PASSWORD_MIN} caracteres.`
     if (mode === "login") return ""
     if (name.trim().length < 3) return "Informe o nome da conta."
-    if (!PHONE_PATTERN.test(phone.trim())) return "Use um WhatsApp fictício no formato (86) 99000-0000."
+    if (!PHONE_PATTERN.test(phone.trim())) return "Use um WhatsApp válido no formato (00) 00000-0000."
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return "Informe um e-mail válido. Ele é usado para recuperar a senha."
-    if (!birthDate) return "Informe uma data de nascimento fictícia."
+    if (!birthDate) return "Informe uma data de nascimento."
     return ""
   }
 
@@ -138,7 +138,7 @@ function AccountStep() {
       ) : null}
       <div className="surface-card mt-4 space-y-3 p-4">
         <label className="block text-sm">CPF fictício
-          <Input className="mt-1 h-12" inputMode="numeric" placeholder="900.200.010-10" value={cpf} onChange={(event) => setCpf(event.target.value)} autoComplete="off" />
+          <Input className="mt-1 h-12" inputMode="numeric" placeholder="Somente números" value={cpf} onChange={(event) => setCpf(formatCpf(event.target.value))} autoComplete="off" />
         </label>
         {mode === "create" ? (
           <>

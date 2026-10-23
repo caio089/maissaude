@@ -1,16 +1,16 @@
 import type { AssociateInput, PatientInput, ProfessionalInput } from "@/lib/types"
+import { isValidCpf } from "@/lib/cpf"
 
 export type FieldErrors<K extends string> = Partial<Record<K, string>>
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PHONE_PATTERN = /^\(\d{2}\) \d{5}-\d{4}$/
-const CPF_PATTERN = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/
 
 export function validatePatientInput(input: PatientInput) {
   const errors: FieldErrors<keyof PatientInput> = {}
   if (input.name.trim().length < 3) errors.name = "Informe um nome com ao menos 3 letras."
-  if (!CPF_PATTERN.test(input.cpf.trim())) {
-    errors.cpf = "Use o formato 000.000.000-00."
+  if (!isValidCpf(input.cpf)) {
+    errors.cpf = "Informe um CPF válido. Você pode digitar só os números."
   }
   if (!PHONE_PATTERN.test(input.phone.trim())) {
     errors.phone = "Use o formato (00) 00000-0000."
@@ -26,8 +26,8 @@ export function validatePatientInput(input: PatientInput) {
 export function validateAssociateInput(input: AssociateInput) {
   const errors: FieldErrors<keyof AssociateInput> = {}
   if (input.name.trim().length < 3) errors.name = "Informe um nome com ao menos 3 letras."
-  if (!CPF_PATTERN.test(input.cpf.trim())) {
-    errors.cpf = "Use o formato 000.000.000-00."
+  if (!isValidCpf(input.cpf)) {
+    errors.cpf = "Informe um CPF válido. Você pode digitar só os números."
   }
   if (!PHONE_PATTERN.test(input.phone.trim())) {
     errors.phone = "Use o formato (00) 00000-0000."

@@ -4,7 +4,7 @@ import { asaasFetch } from "@/lib/asaas/client"
 import { asaasEnvironment } from "@/lib/asaas/config"
 import { ensureAsaasCustomer, type EnsureAsaasCustomerInput } from "@/lib/asaas/customers"
 import { asaasBillingType, moneyValue, saoPauloDate } from "@/lib/asaas/format"
-import type { AsaasBillingType, AsaasSubscription } from "@/lib/asaas/types"
+import type { AsaasBillingType, AsaasPaymentList, AsaasPixQrCode, AsaasSubscription } from "@/lib/asaas/types"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 
 export type CreateAsaasSubscriptionInput = EnsureAsaasCustomerInput & {
@@ -42,7 +42,14 @@ export async function createAsaasSubscription(input: CreateAsaasSubscriptionInpu
     associateId: input.associateId,
   })
 
-  return { customer, subscription }
+  const payment = subscription.id
+    ? (await asaasFetch<AsaasPaymentList>(`/payments?subscription=${encodeURIComponent(subscription.id)}&limit=1`)).data?.[0]
+    : undefined
+  const pix = billingType === "PIX" && payment?.id
+    ? await asaasFetch<AsaasPixQrCode>(`/payments/${payment.id}/pixQrCode`)
+    : null
+
+  return { customer, subscription, payment, pix }
 }
 
 async function persistSubscription(

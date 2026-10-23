@@ -16,10 +16,10 @@ import { AUTH_PASSWORD_MIN } from "@/lib/auth/constants"
 import { associateQuote, findActiveAssociate } from "@/lib/associate-rules"
 import { formatDate, formatMoney } from "@/lib/format"
 import { cpfDigits, formatCpf, isValidCpf } from "@/lib/cpf"
+import { isValidPhone } from "@/lib/phone"
 import { useDemoStore } from "@/lib/store"
 import type { CartLine } from "@/lib/types"
 
-const PHONE_PATTERN = /^\(\d{2}\) \d{5}-\d{4}$/
 type Stage = "catalog" | "confirm" | "pay"
 
 export function MobileJourney() {
@@ -54,7 +54,7 @@ function AccountStep() {
     if (password.trim().length < AUTH_PASSWORD_MIN) return `A senha precisa ter ao menos ${AUTH_PASSWORD_MIN} caracteres.`
     if (mode === "login") return ""
     if (name.trim().length < 3) return "Informe o nome da conta."
-    if (!PHONE_PATTERN.test(phone.trim())) return "Use um WhatsApp válido no formato (00) 00000-0000."
+    if (!isValidPhone(phone)) return "Informe um WhatsApp válido com DDD. Pode digitar só os números."
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return "Informe um e-mail válido. Ele é usado para recuperar a senha."
     if (!birthDate) return "Informe uma data de nascimento."
     return ""
@@ -131,7 +131,7 @@ function AccountStep() {
               <Input className="mt-1 h-12" value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
             </label>
             <label className="block text-sm">WhatsApp
-              <Input className="mt-1 h-12" inputMode="tel" placeholder="(86) 99000-0000" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" />
+              <Input className="mt-1 h-12" inputMode="tel" placeholder="Ex.: 86990000000" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" />
             </label>
             <label className="block text-sm">Data de nascimento
               <Input className="mt-1 h-12" type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />

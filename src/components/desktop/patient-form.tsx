@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Field } from "@/components/shared/field"
 import type { PatientInput, PatientStatus } from "@/lib/types"
 import { validatePatientInput, type FieldErrors } from "@/lib/validation"
+import { phoneDigits } from "@/lib/phone"
 
 type PatientErrors = FieldErrors<keyof PatientInput>
 
@@ -39,7 +40,7 @@ export function patientFormErrors(form: PatientInput, patients: ExistingPatient[
   if (others.some((patient) => patient.cpf.trim() === form.cpf.trim())) {
     errors.cpf = "Este CPF já está cadastrado."
   }
-  if (others.some((patient) => patient.phone.trim() === form.phone.trim())) {
+  if (others.some((patient) => phoneDigits(patient.phone) === phoneDigits(form.phone))) {
     errors.phone = "Este telefone já está cadastrado."
   }
   if (others.some((patient) => patient.email.trim().toLowerCase() === form.email.trim().toLowerCase())) {

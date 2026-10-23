@@ -10,6 +10,7 @@ import {
 } from "@/lib/auth/patients"
 import { toDateKey } from "@/lib/format"
 import { cpfDigits, isValidCpf } from "@/lib/cpf"
+import { isValidPhone } from "@/lib/phone"
 import { createSupabaseAdmin, isSupabaseAdminConfigured } from "@/lib/supabase/admin"
 import { isSupabaseBrowserConfigured } from "@/lib/supabase/env"
 import { createServerSupabase } from "@/lib/supabase/server"
@@ -17,7 +18,6 @@ import type { AuthClaims } from "@/lib/supabase/session"
 import type { Patient } from "@/lib/types"
 
 const CPF_PATTERN = /^\d{3}\.?(?:\d{3})\.?\d{3}-?\d{2}$/
-const PHONE_PATTERN = /^\+?[\d\s().-]{10,20}$/
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export type PatientAuthResult =
@@ -196,7 +196,7 @@ function validateRegister(input: {
   const city = input.city.trim() || "Teresina"
   if (!CPF_PATTERN.test(cpf) || !isValidCpf(cpf)) return { ok: false, message: "Informe um CPF válido." }
   if (name.length < 3) return { ok: false, message: "Informe o nome da conta." }
-  if (!PHONE_PATTERN.test(phone)) return { ok: false, message: "Informe um WhatsApp válido, com DDD." }
+  if (!isValidPhone(phone)) return { ok: false, message: "Informe um WhatsApp válido, com DDD." }
   if (!EMAIL_PATTERN.test(email)) return { ok: false, message: "Informe um e-mail válido." }
   if (email === CLINIC_AUTH_EMAIL) return { ok: false, message: "Este e-mail pertence à equipe da clínica." }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || birthDate > toDateKey(new Date())) {

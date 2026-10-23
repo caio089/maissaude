@@ -9,6 +9,7 @@ import { catalogOfferFor } from "@/lib/mobile-catalog"
 import { findConflict, isOpenSlot, serviceOf } from "@/lib/schedule"
 import { createSeed, emptyBooking } from "@/lib/seed"
 import { hasErrors, validateAssociateInput, validatePatientInput, validateProfessionalInput } from "@/lib/validation"
+import { isValidPhone } from "@/lib/phone"
 import {
   CHANNEL_NAME,
   SCHEMA_VERSION,
@@ -211,8 +212,8 @@ export const useDemoStore = create<DemoStore>()(
         if (!/^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(normalizedCpf)) {
           return { ok: false, message: "Use o CPF no formato 000.000.000-00." }
         }
-        if (!/^\(\d{2}\) \d{5}-\d{4}$/.test(normalizedPhone)) {
-          return { ok: false, message: "Use o WhatsApp no formato (00) 00000-0000." }
+        if (!isValidPhone(normalizedPhone)) {
+          return { ok: false, message: "Informe um WhatsApp válido com DDD. Pode digitar só os números." }
         }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || birthDate > toDateKey(new Date())) {
           return { ok: false, message: "Informe uma data de nascimento válida que já tenha ocorrido." }

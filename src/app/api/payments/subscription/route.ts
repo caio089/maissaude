@@ -63,6 +63,8 @@ export async function POST() {
       subscriptionId: result.subscription.id,
       status: result.subscription.status,
       value: result.subscription.value,
+      invoiceUrl: result.payment?.invoiceUrl || null,
+      pix: result.pix ? { payload: result.pix.payload || null, encodedImage: result.pix.encodedImage || null } : null,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível criar a assinatura."

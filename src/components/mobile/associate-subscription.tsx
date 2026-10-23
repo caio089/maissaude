@@ -87,7 +87,7 @@ export function AssociatePayForm({
       <button type="button" onClick={onBack} className="text-sm text-teal">Voltar</button>
       <h1 className="mt-2 text-2xl font-semibold">Confirme a assinatura</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        A mensalidade de {formatMoney(fee)} segue o ciclo mensal da Asaas. Nesta demonstração o Pix ainda é ilustrativo; cartão não é capturado neste aplicativo.
+        A mensalidade de {formatMoney(fee)} segue o ciclo mensal da Asaas. O pagamento é gerado por Pix; este aplicativo não coleta dados de cartão.
       </p>
       <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm text-muted-foreground ring-1 ring-border">
         Assinatura recorrente via Pix. A Asaas gera as cobranças ao longo do mês; o webhook confirma cada pagamento.
@@ -108,9 +108,9 @@ export function AssociateAccountPanel() {
   const associates = useDemoStore((state) => state.associates)
   const associate = associates.find((item) => item.cpf.trim() === patient?.cpf?.trim())
   const rules = useDemoStore((state) => state.associateRules)
-  const subscribeCurrentPatient = useDemoStore((state) => state.subscribeCurrentPatient)
   const [paying, setPaying] = useState(false)
   const [error, setError] = useState("")
+  const [charge, setCharge] = useState<{ payload: string | null; encodedImage: string | null; invoiceUrl: string | null } | null>(null)
 
   if (!patient) return null
   if (paying && associate?.status !== "active") {
@@ -119,20 +119,34 @@ export function AssociateAccountPanel() {
         {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
         <AssociatePayForm
           onBack={() => setPaying(false)}
-          onConfirm={() => {
-            const result = subscribeCurrentPatient()
-            if (!result.ok) setError(result.message)
-            else {
-              setPaying(false)
-              toast.success("Assinatura de associado confirmada nesta demonstração.")
-            }
-          }}
+        onConfirm={async () => {
+          const response = await fetch("/api/payments/subscription", { method: "POST" })
+          const body = await response.json() as { error?: string; pix?: { payload?: string | null; encodedImage?: string | null } | null; invoiceUrl?: string | null }
+          if (!response.ok) {
+            setError(body.error || "Não foi possível gerar o Pix.")
+            return
+          }
+          setCharge({ payload: body.pix?.payload || null, encodedImage: body.pix?.encodedImage || null, invoiceUrl: body.invoiceUrl || null })
+          toast.success("Pix gerado. A associação será ativada após a confirmação.")
+        }}
         />
       </div>
     )
   }
 
   const active = associate?.status === "active"
+
+  if (charge) {
+    return (
+      <section className="surface-card p-4">
+        <p className="text-sm font-medium">Pix da mensalidade</p>
+        <p className="mt-1 text-sm text-muted-foreground">A associação será ativada após a confirmação do pagamento.</p>
+        {charge.encodedImage ? <img className="mx-auto mt-4 size-52" src={`data:image/png;base64,${charge.encodedImage}`} alt="QR Code Pix da mensalidade" /> : null}
+        {charge.payload ? <Button type="button" variant="outline" className="mt-4 w-full" onClick={() => { if (charge.payload) void navigator.clipboard.writeText(charge.payload).then(() => toast.success("Código Pix copiado.")) }}>Copiar código Pix</Button> : null}
+        {charge.invoiceUrl ? <Button asChild className="mt-3 w-full"><a href={charge.invoiceUrl} target="_blank" rel="noreferrer">Abrir cobrança</a></Button> : null}
+      </section>
+    )
+  }
 
   return (
     <section className="surface-card p-4">

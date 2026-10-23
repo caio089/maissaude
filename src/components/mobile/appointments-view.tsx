@@ -64,7 +64,7 @@ export function MobileAppointments() {
         open={Boolean(cancelId)}
         onOpenChange={(open) => !open && setCancelId(null)}
         title="Cancelar esta consulta?"
-        description="O cancelamento é simulado. O horário volta a ficar disponível e um pagamento recebido aparece como estorno demonstrativo."
+        description="O horário volta a ficar disponível. Para pagamentos já confirmados, entre em contato com a clínica para avaliar o estorno."
         confirmLabel="Cancelar consulta"
         destructive
         onConfirm={() => {
@@ -72,7 +72,7 @@ export function MobileAppointments() {
           cancelAppointment(cancelId, "patient")
           setCancelId(null)
           setSelectedId(null)
-          toast.success("Consulta cancelada na demonstração.")
+          toast.success("Consulta cancelada.")
         }}
       />
     </div>
@@ -95,7 +95,7 @@ function List({ items, empty, onOpen }: { items: Appointment[]; empty: string; o
                 <span className="font-medium">{professional?.name}</span>
                 <StatusBadge status={item.status} />
               </span>
-              <span className="mt-1 block text-sm text-muted-foreground">{service?.name ?? "Consulta de demonstração"}</span>
+              <span className="mt-1 block text-sm text-muted-foreground">{service?.name ?? "Consulta"}</span>
               <span className="mt-1 block text-sm text-muted-foreground">{formatDate(item.startsAt, "EEEE, d 'de' MMMM 'às' HH:mm")}</span>
             </button>
           )
@@ -118,9 +118,9 @@ function Details({ appointment, onReschedule, onCancel }: { appointment: Appoint
         <p className="text-muted-foreground">{appointment.notes}</p>
         {payment ? (
           <div className="relative overflow-hidden rounded-2xl bg-muted p-4">
-            <p className="text-[11px] font-semibold tracking-[0.2em] text-primary/50">COMPROVANTE DEMONSTRATIVO</p>
+            <p className="text-[11px] font-semibold tracking-[0.2em] text-primary/50">COBRANÇA</p>
             <p className="mt-2 font-medium">{payment.reference}</p>
-            <p>{formatMoney(payment.amount)} · {payment.method === "pix" ? "Pix simulado" : "Cartão simulado"}</p>
+            <p>{formatMoney(payment.amount)} · {payment.method === "pix" ? "Pix" : "Cartão"}</p>
           </div>
         ) : null}
         {canChange ? (

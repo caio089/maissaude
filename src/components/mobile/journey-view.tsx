@@ -5,7 +5,7 @@ import { useState } from "react"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { AppointmentConfirmation } from "@/components/mobile/appointment-confirmation"
-import { AssociatePayForm, AssociatePitch } from "@/components/mobile/associate-subscription"
+import { AssociatePitch } from "@/components/mobile/associate-subscription"
 import { CatalogPanel } from "@/components/mobile/catalog-panel"
 import { FlowSteps } from "@/components/shared/flow-steps"
 import { Logo } from "@/components/brand/logo"
@@ -17,7 +17,7 @@ import { associateQuote, findActiveAssociate } from "@/lib/associate-rules"
 import { formatDate, formatMoney } from "@/lib/format"
 import { cpfDigits, formatCpf, isValidCpf } from "@/lib/cpf"
 import { useDemoStore } from "@/lib/store"
-import type { CartLine, PaymentMethod } from "@/lib/types"
+import type { CartLine } from "@/lib/types"
 
 const PHONE_PATTERN = /^\(\d{2}\) \d{5}-\d{4}$/
 type Stage = "catalog" | "confirm" | "pay"
@@ -36,10 +36,9 @@ export function MobileJourney() {
 
 function AccountStep() {
   const adoptPatientSession = useDemoStore((state) => state.adoptPatientSession)
-  const subscribeCurrentPatient = useDemoStore((state) => state.subscribeCurrentPatient)
   const city = useDemoStore((state) => state.mobileCity)
   const [mode, setMode] = useState<"create" | "login">("create")
-  const [stage, setStage] = useState<"form" | "offer" | "pay">("form")
+  const [stage, setStage] = useState<"form" | "offer">("form")
   const [name, setName] = useState("")
   const [cpf, setCpf] = useState("")
   const alreadyAssociate = useDemoStore((state) => findActiveAssociate(state.associates, cpfDigits(cpf)))
@@ -61,7 +60,7 @@ function AccountStep() {
     return ""
   }
 
-  async function createAccount(subscribe: boolean) {
+  async function createAccount() {
     const message = accountError()
     if (message) {
       setError(message)
@@ -79,11 +78,7 @@ function AccountStep() {
       return
     }
     adoptPatientSession(result.patient)
-    if (subscribe) {
-      const joined = subscribeCurrentPatient()
-      if (!joined.ok) toast.error(joined.message)
-      else toast.success("Assinatura de associado confirmada nesta demonstração.")
-    } else if (alreadyAssociate) {
+    if (alreadyAssociate) {
       toast.success("Este CPF já é associado. A assinatura continua valendo.")
     }
     setPending(false)
@@ -94,7 +89,7 @@ function AccountStep() {
     setError(message)
     if (message) return
     if (mode === "login" || alreadyAssociate) {
-      void createAccount(false)
+      void createAccount()
       return
     }
     setStage("offer")
@@ -106,22 +101,12 @@ function AccountStep() {
         title="Quer ser associado?"
         lead="A associação só começa com a assinatura mensal. Se preferir agora não, a conta é criada mesmo assim e a assinatura fica nas configurações."
         stepsCurrent={1}
-        primaryLabel="Assinar e me associar"
-        onPrimary={() => setStage("pay")}
+        primaryLabel="Criar minha conta"
+        onPrimary={() => void createAccount()}
         secondaryLabel="Agora não"
-        onSecondary={() => void createAccount(false)}
+        onSecondary={() => void createAccount()}
         onBack={() => setStage("form")}
         pending={pending}
-      />
-    )
-  }
-
-  if (stage === "pay") {
-    return (
-      <AssociatePayForm
-        className="px-5 pt-8 pb-8"
-        onBack={() => setStage("offer")}
-        onConfirm={() => createAccount(true)}
       />
     )
   }
@@ -130,14 +115,14 @@ function AccountStep() {
     <div className="px-4 pt-6 pb-8">
       <Logo />
       <h1 className="mt-5 text-3xl font-semibold tracking-tight">{mode === "create" ? "Crie sua conta" : "Entre na sua conta"}</h1>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">Os dados ficam só nesta demonstração, neste navegador. A senha não aparece no painel da clínica.</p>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">Sua conta é protegida e a senha não aparece no painel da clínica.</p>
       {mode === "create" ? (
         <div className="mt-4">
           <FlowSteps steps={["Seus dados", "Associação"]} current={0} />
         </div>
       ) : null}
       <div className="surface-card mt-4 space-y-3 p-4">
-        <label className="block text-sm">CPF fictício
+        <label className="block text-sm">CPF
           <Input className="mt-1 h-12" inputMode="numeric" placeholder="Somente números" value={cpf} onChange={(event) => setCpf(formatCpf(event.target.value))} autoComplete="off" />
         </label>
         {mode === "create" ? (
@@ -145,7 +130,7 @@ function AccountStep() {
             <label className="block text-sm">Nome
               <Input className="mt-1 h-12" value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
             </label>
-            <label className="block text-sm">WhatsApp fictício
+            <label className="block text-sm">WhatsApp
               <Input className="mt-1 h-12" inputMode="tel" placeholder="(86) 99000-0000" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" />
             </label>
             <label className="block text-sm">Data de nascimento
@@ -245,18 +230,28 @@ function ConfirmStep({
 }
 
 function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void }) {
-  const checkoutCart = useDemoStore((state) => state.checkoutCart)
   const quote = useAssociateContext()
   const total = cart.reduce((sum, item) => sum + lineAmount(item, quote), 0)
-  const [method, setMethod] = useState<PaymentMethod>("pix")
   const [processing, setProcessing] = useState(false)
+  const [charges, setCharges] = useState<Array<{ value: number; invoiceUrl: string | null; pix: { payload: string | null; encodedImage: string | null } | null }> | null>(null)
 
-  async function pay(outcome: "approved" | "declined") {
+  async function pay() {
     setProcessing(true)
-    await new Promise((resolve) => window.setTimeout(resolve, 900))
-    const result = checkoutCart(cart, method, outcome)
-    setProcessing(false)
-    if (!result.ok) toast.error(result.message)
+    try {
+      const response = await fetch("/api/payments/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lines: cart.map(({ professionalId, serviceId, date, time }) => ({ professionalId, serviceId, date, time })) }),
+      })
+      const body = await response.json() as { error?: string; charges?: Array<{ value: number; invoiceUrl: string | null; pix: { payload: string | null; encodedImage: string | null } | null }> }
+      if (!response.ok || !body.charges) {
+        toast.error(body.error || "Não foi possível gerar o Pix.")
+        return
+      }
+      setCharges(body.charges)
+    } finally {
+      setProcessing(false)
+    }
   }
 
   return (
@@ -265,8 +260,8 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
       <div className="mt-3">
         <FlowSteps steps={["Carrinho", "Confirmar", "Pagar"]} current={2} />
       </div>
-      <h1 className="mt-4 text-2xl font-semibold">Pagamento simulado</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Pix ou fatura Asaas. Nada é cobrado de verdade até a chave estar ligada. Depois disto a guia aparece.</p>
+      <h1 className="mt-4 text-2xl font-semibold">Pagamento</h1>
+      <p className="mt-1 text-sm text-muted-foreground">O Pix é gerado pela Asaas. A consulta fica pendente até a confirmação do pagamento.</p>
       <div className="surface-card mt-4 p-4">
         <ul className="space-y-2 text-sm">
           {cart.map((item) => (
@@ -281,21 +276,22 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
         </ul>
         <p className="mt-3 border-t pt-3 text-2xl font-semibold">{formatMoney(total)}</p>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <button type="button" onClick={() => setMethod("pix")} className={`rounded-2xl py-3 text-sm ${method === "pix" ? "bg-primary text-primary-foreground" : "bg-white ring-1 ring-border"}`}>Pix</button>
-        <button type="button" onClick={() => setMethod("card")} className={`rounded-2xl py-3 text-sm ${method === "card" ? "bg-primary text-primary-foreground" : "bg-white ring-1 ring-border"}`}>Fatura</button>
-      </div>
-      {method === "pix" ? (
-        <p className="surface-card mt-4 px-4 py-3 text-sm text-muted-foreground">Pix ilustrativo, sem chave de cobrança. O pagamento aprovado é só da demonstração.</p>
-      ) : (
-        <p className="surface-card mt-4 px-4 py-3 text-sm text-muted-foreground">
-          Fatura da Asaas para cartão, sem coletar dados do cartão neste aplicativo.
-        </p>
-      )}
-      <Button type="button" className="mt-5 h-12 w-full" disabled={processing || cart.length === 0} onClick={() => void pay("approved")}>
+      {charges ? (
+        <div className="mt-4 space-y-4">
+          {charges.map((charge, index) => (
+            <section key={index} className="surface-card p-4">
+              <p className="font-medium">Pix {charges.length > 1 ? `${index + 1} de ${charges.length}` : ""} · {formatMoney(charge.value)}</p>
+              {charge.pix?.encodedImage ? <img className="mx-auto mt-3 size-52" src={`data:image/png;base64,${charge.pix.encodedImage}`} alt="QR Code Pix" /> : null}
+              {charge.pix?.payload ? <Button type="button" variant="outline" className="mt-3 w-full" onClick={() => void navigator.clipboard.writeText(charge.pix?.payload || "").then(() => toast.success("Código Pix copiado."))}>Copiar código Pix</Button> : null}
+              {charge.invoiceUrl ? <Button asChild className="mt-3 w-full"><a href={charge.invoiceUrl} target="_blank" rel="noreferrer">Abrir cobrança</a></Button> : null}
+            </section>
+          ))}
+          <p className="text-center text-sm text-muted-foreground">Após o pagamento, a Asaas confirma automaticamente a cobrança.</p>
+        </div>
+      ) : <Button type="button" className="mt-5 h-12 w-full" disabled={processing || cart.length === 0} onClick={() => void pay()}>
         {processing ? <Loader2 className="animate-spin" /> : null}
-        Simular pagamento aprovado
-      </Button>
+        Gerar Pix
+      </Button>}
     </section>
   )
 }

@@ -15,8 +15,8 @@ import { createServerSupabase } from "@/lib/supabase/server"
 import type { AuthClaims } from "@/lib/supabase/session"
 import type { Patient } from "@/lib/types"
 
-const CPF_PATTERN = /^900\.\d{3}\.\d{3}-\d{2}$/
-const PHONE_PATTERN = /^\(\d{2}\) \d{5}-\d{4}$/
+const CPF_PATTERN = /^\d{3}\.?(?:\d{3})\.?\d{3}-?\d{2}$/
+const PHONE_PATTERN = /^\+?[\d\s().-]{10,20}$/
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export type PatientAuthResult =
@@ -193,12 +193,10 @@ function validateRegister(input: {
   const birthDate = input.birthDate.trim()
   const password = input.password
   const city = input.city.trim() || "Teresina"
-  if (!CPF_PATTERN.test(cpf)) return { ok: false, message: "Use um CPF fictício começando com 900, no formato 900.000.000-00." }
+  if (!CPF_PATTERN.test(cpf) || !isValidCpf(cpf)) return { ok: false, message: "Informe um CPF válido." }
   if (name.length < 3) return { ok: false, message: "Informe o nome da conta." }
-  if (!PHONE_PATTERN.test(phone)) return { ok: false, message: "Use um WhatsApp fictício no formato (86) 99000-0000." }
-  if (!EMAIL_PATTERN.test(email) || !email.includes("demo")) {
-    return { ok: false, message: "Use um e-mail de demonstração, por exemplo nome@demonstracao.demo." }
-  }
+  if (!PHONE_PATTERN.test(phone)) return { ok: false, message: "Informe um WhatsApp válido, com DDD." }
+  if (!EMAIL_PATTERN.test(email)) return { ok: false, message: "Informe um e-mail válido." }
   if (email === CLINIC_AUTH_EMAIL) return { ok: false, message: "Este e-mail pertence à equipe da clínica." }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || birthDate > toDateKey(new Date())) {
     return { ok: false, message: "Informe uma data de nascimento que já tenha ocorrido." }
@@ -215,4 +213,18 @@ function friendlyAuthError(message: string) {
     return "Este e-mail já tem conta. Entre ou recupere a senha."
   }
   return message
+}
+
+function isValidCpf(value: string) {
+  const digits = value.replace(/\D/g, "")
+  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false
+  const digit = (length: number) => {
+    const total = digits
+      .slice(0, length)
+      .split("")
+      .reduce((sum, item, index) => sum + Number(item) * (length + 1 - index), 0)
+    const remainder = (total * 10) % 11
+    return remainder === 10 ? 0 : remainder
+  }
+  return digit(9) === Number(digits[9]) && digit(10) === Number(digits[10])
 }

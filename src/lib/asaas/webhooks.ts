@@ -124,6 +124,17 @@ async function applyWebhookSideEffects(payload: AsaasWebhookPayload) {
       paid_at: localStatus === "paid" ? new Date().toISOString() : null,
     })
     .eq("asaas_payment_id", payment.id)
+
+  if (payment.subscription && localStatus === "paid") {
+    const { data: subscription } = await admin
+      .from("asaas_subscriptions")
+      .select("associate_id")
+      .eq("id", payment.subscription)
+      .maybeSingle()
+    if (subscription?.associate_id) {
+      await admin.from("associates").update({ status: "active" }).eq("id", subscription.associate_id)
+    }
+  }
 }
 
 async function fetchVerifiedPayment(id: string) {

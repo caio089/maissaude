@@ -19,7 +19,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       }
     }
     align()
-    setReady(true)
+    queueMicrotask(() => setReady(true))
     const unsubscribe = useDemoStore.persist.onFinishHydration(align)
     if (!useDemoStore.persist.hasHydrated()) {
       void Promise.resolve(useDemoStore.persist.rehydrate()).finally(align)

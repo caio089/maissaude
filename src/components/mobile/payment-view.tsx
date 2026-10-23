@@ -6,11 +6,9 @@ import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { AppointmentConfirmation } from "@/components/mobile/appointment-confirmation"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { formatDate, formatMoney } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
 import type { PaymentMethod } from "@/lib/types"
-import { DEMO_CARD_HINT, hasErrors, validateDemoCard } from "@/lib/validation"
 
 export function PaymentView() {
   const data = useDemoStore((state) => state.data)
@@ -20,22 +18,14 @@ export function PaymentView() {
   const clearCheckout = useDemoStore((state) => state.clearCheckout)
   const [method, setMethod] = useState<PaymentMethod>("pix")
   const [processing, setProcessing] = useState<PaymentMethod | "wait" | null>(null)
-  const [card, setCard] = useState({ number: "", name: "", expiry: "", cvv: "" })
-  const [errors, setErrors] = useState<Partial<Record<keyof typeof card, string>>>({})
   const professional = data.professionals.find((item) => item.id === booking.professionalId)
   const service = professional?.services.find((item) => item.id === booking.serviceId)
   const ready = Boolean(professional && service && booking.date && booking.time && !booking.rescheduleAppointmentId)
 
   async function pay(outcome: "approved" | "declined") {
-    if (method === "card") {
-      const nextErrors = validateDemoCard(card)
-      setErrors(nextErrors)
-      if (hasErrors(nextErrors)) return
-    }
     setProcessing("wait")
     await new Promise((resolve) => window.setTimeout(resolve, 1200))
     const result = simulateCheckout(method, outcome)
-    setCard({ number: "", name: "", expiry: "", cvv: "" })
     setProcessing(null)
     if (result.ok) toast.success("Pagamento simulado aprovado.")
     else toast.error(result.message)
@@ -58,7 +48,9 @@ export function PaymentView() {
   return (
     <div className="px-5 pt-5 pb-6">
       <h1 className="text-2xl font-semibold">Pagamento simulado</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Nenhum dado de cartão é salvo e nenhuma cobrança real é criada.</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Pix usa QR da Asaas quando a chave estiver ligada. Cartão abre a fatura da Asaas, sem capturar número neste aplicativo.
+      </p>
       <div className="mt-4 rounded-3xl bg-white p-4 ring-1 ring-border">
         <p className="text-sm text-muted-foreground">{professional.name}</p>
         <p className="font-medium">{service.name}</p>
@@ -67,17 +59,12 @@ export function PaymentView() {
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
         <button type="button" onClick={() => setMethod("pix")} className={`rounded-2xl py-3 text-sm ${method === "pix" ? "bg-primary text-primary-foreground" : "bg-white ring-1 ring-border"}`}>Pix</button>
-        <button type="button" onClick={() => setMethod("card")} className={`rounded-2xl py-3 text-sm ${method === "card" ? "bg-primary text-primary-foreground" : "bg-white ring-1 ring-border"}`}>Cartão</button>
+        <button type="button" onClick={() => setMethod("card")} className={`rounded-2xl py-3 text-sm ${method === "card" ? "bg-primary text-primary-foreground" : "bg-white ring-1 ring-border"}`}>Fatura</button>
       </div>
       {method === "pix" ? <DemoQr /> : (
-        <div className="mt-4 space-y-3 rounded-3xl bg-white p-4 ring-1 ring-border">
-          <Field label="Nome fictício" error={errors.name}><Input className="h-10" value={card.name} onChange={(event) => setCard({ ...card, name: event.target.value })} /></Field>
-          <Field label="Número fictício" error={errors.number} hint={`Use ${DEMO_CARD_HINT}`}><Input className="h-10" inputMode="numeric" value={card.number} onChange={(event) => setCard({ ...card, number: event.target.value })} /></Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Validade" error={errors.expiry}><Input className="h-10" placeholder="12/30" value={card.expiry} onChange={(event) => setCard({ ...card, expiry: event.target.value })} /></Field>
-            <Field label="CVV" error={errors.cvv}><Input className="h-10" placeholder="000" value={card.cvv} onChange={(event) => setCard({ ...card, cvv: event.target.value })} /></Field>
-          </div>
-        </div>
+        <p className="mt-4 rounded-3xl bg-white px-4 py-3 text-sm text-muted-foreground ring-1 ring-border">
+          Na Asaas, cobrança de cartão sem dados do cartão gera a fatura. Este app não coleta número, validade nem CVV.
+        </p>
       )}
       {lastCheckout?.outcome === "declined" ? <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-800">A simulação recusou o pagamento {lastCheckout.reference}. O horário não foi reservado.</p> : null}
       <div className="mt-5 space-y-2">
@@ -89,16 +76,6 @@ export function PaymentView() {
         </Button>
       </div>
     </div>
-  )
-}
-
-function Field({ label, error, hint, children }: { label: string; error?: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="block text-sm">
-      {label}
-      <div className="mt-1">{children}</div>
-      {error ? <span className="mt-1 block text-xs text-destructive">{error}</span> : hint ? <span className="mt-1 block text-xs text-muted-foreground">{hint}</span> : null}
-    </label>
   )
 }
 

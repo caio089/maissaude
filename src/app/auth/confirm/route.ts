@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server"
 import type { EmailOtpType } from "@supabase/supabase-js"
 
+import { requestOrigin } from "@/lib/auth/origin"
+import { safeAuthNext } from "@/lib/auth/redirect"
 import { createServerSupabase } from "@/lib/supabase/server"
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const { searchParams } = new URL(request.url)
+  const origin = await requestOrigin()
+  if (!origin) {
+    return new NextResponse("NEXT_PUBLIC_SITE_URL precisa estar definida em produção.", { status: 503 })
+  }
   const tokenHash = searchParams.get("token_hash")
   const type = searchParams.get("type") as EmailOtpType | null
-  const next = safeNext(searchParams.get("next"))
+  const next = safeAuthNext(searchParams.get("next"))
 
   if (tokenHash && type) {
     const supabase = await createServerSupabase()
@@ -16,9 +22,4 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.redirect(`${origin}/auth/erro`)
-}
-
-function safeNext(value: string | null) {
-  if (value && value.startsWith("/") && !value.startsWith("//")) return value
-  return "/auth/atualizar-senha"
 }

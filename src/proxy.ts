@@ -24,6 +24,18 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  if (pathname === "/api/asaas/status") {
+    if (!clinicSession) {
+      return copyAuthCookies(response, NextResponse.json({ error: "Não autorizado." }, { status: 401 }))
+    }
+  }
+
+  if (pathname.startsWith("/auth/atualizar-senha")) {
+    if (!role) {
+      return copyAuthCookies(response, NextResponse.redirect(new URL("/auth/recuperar", request.url)))
+    }
+  }
+
   return response
 }
 

@@ -1,3 +1,5 @@
+import { hmacClinicFallbackEnabled } from "@/lib/runtime"
+
 const text = new TextEncoder()
 
 /** Cookie só da equipe. A conta do paciente não grava nem lê este valor. */
@@ -8,7 +10,10 @@ const CLINIC_EMAIL = "clinica@demonstracao.demo"
 const CLINIC_PASSWORD_HASH = "204fbc1887a3fedc68cdc5f761984a196a26e9e3f0b1e6312d12dfee6938df9a"
 
 function sessionSecret() {
-  return process.env.CLINIC_SESSION_SECRET || "cuidar-saude-painel-demo-v1"
+  const secret = process.env.CLINIC_SESSION_SECRET?.trim()
+  if (secret) return secret
+  if (!hmacClinicFallbackEnabled()) return ""
+  return "cuidar-saude-painel-demo-v1"
 }
 
 export function clinicCookieOptions() {
@@ -22,6 +27,7 @@ export function clinicCookieOptions() {
 }
 
 export async function clinicCredentialsMatch(email: string, password: string) {
+  if (!hmacClinicFallbackEnabled()) return false
   const normalizedEmail = email.trim().toLowerCase()
   const emailMatches = safeEqual(normalizedEmail, CLINIC_EMAIL)
   const passwordHash = await sha256(`cuidar-saude-clinica|${password}`)
@@ -35,6 +41,7 @@ export async function createClinicToken(expiresAt: number) {
 }
 
 export async function verifyClinicToken(token: string | undefined, now: number) {
+  if (!hmacClinicFallbackEnabled() || !sessionSecret()) return false
   if (!token) return false
   const splitAt = token.lastIndexOf(".")
   if (splitAt <= 0) return false

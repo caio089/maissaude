@@ -2,8 +2,10 @@ import { NextResponse } from "next/server"
 
 import { persistAsaasWebhook, webhookTokenMatches } from "@/lib/asaas/webhooks"
 import type { AsaasWebhookPayload } from "@/lib/asaas/types"
-import { isAsaasWebhookConfigured } from "@/lib/asaas/config"
+import { isAsaasConfigured, isAsaasWebhookConfigured } from "@/lib/asaas/config"
 import { isSupabaseAdminConfigured } from "@/lib/supabase/admin"
+
+const MAX_BODY_BYTES = 64_000
 
 export async function POST(request: Request) {
   if (!isAsaasWebhookConfigured()) {
@@ -15,16 +17,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Token do webhook inválido." }, { status: 401 })
   }
 
-  if (!isSupabaseAdminConfigured()) {
+  if (!isAsaasConfigured() || !isSupabaseAdminConfigured()) {
     return NextResponse.json(
-      { error: "Service role do Supabase ainda não foi configurada para persistir o evento." },
+      { error: "Asaas e service role precisam estar configurados para confirmar o evento." },
       { status: 503 },
     )
   }
 
+  const raw = await request.text()
+  if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "Corpo do webhook excede o tamanho permitido." }, { status: 413 })
+  }
+
   let payload: AsaasWebhookPayload
   try {
-    payload = (await request.json()) as AsaasWebhookPayload
+    payload = JSON.parse(raw) as AsaasWebhookPayload
   } catch {
     return NextResponse.json({ error: "Corpo do webhook inválido." }, { status: 400 })
   }

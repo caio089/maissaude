@@ -22,6 +22,7 @@ export async function createAsaasCharge(input: CreateAsaasChargeInput) {
   }
 
   const customer = await ensureAsaasCustomer(input)
+  // CREDIT_CARD sem dados do cartão gera a Fatura (invoiceUrl). Não capturamos cartão.
   const payment = await asaasFetch<AsaasPayment>("/payments", {
     method: "POST",
     body: JSON.stringify({
@@ -29,7 +30,7 @@ export async function createAsaasCharge(input: CreateAsaasChargeInput) {
       billingType: input.billingType,
       value: moneyValue(input.value),
       dueDate: input.dueDate || saoPauloDate(),
-      description: input.description,
+      description: (input.description || "Cobrança CuidarSaude").slice(0, 500),
       externalReference: input.externalReference || input.paymentId || input.patientId,
     }),
   })
@@ -61,6 +62,7 @@ async function persistCharge(
     payment_id: extra.paymentId || null,
     patient_id: extra.patientId || null,
     customer_id: extra.customerId,
+    subscription_id: payment.subscription || null,
     billing_type: asaasBillingType(payment.billingType),
     status: payment.status || "PENDING",
     value: payment.value ?? 0,

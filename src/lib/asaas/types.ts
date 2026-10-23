@@ -1,5 +1,7 @@
 export type AsaasBillingType = "PIX" | "CREDIT_CARD" | "BOLETO" | "UNDEFINED"
 
+export type AsaasCycle = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "BIMONTHLY" | "QUARTERLY" | "SEMIANNUALLY" | "YEARLY"
+
 export type AsaasCustomer = {
   id: string
   name?: string
@@ -7,6 +9,7 @@ export type AsaasCustomer = {
   cpfCnpj?: string
   mobilePhone?: string
   externalReference?: string
+  deleted?: boolean
 }
 
 export type AsaasCustomerList = {
@@ -16,13 +19,15 @@ export type AsaasCustomerList = {
 export type AsaasPayment = {
   id: string
   customer?: string
-  billingType?: AsaasBillingType
+  subscription?: string
+  billingType?: AsaasBillingType | string
   status?: string
   value?: number
   dueDate?: string
   invoiceUrl?: string
   externalReference?: string
   description?: string
+  deleted?: boolean
 }
 
 export type AsaasPixQrCode = {
@@ -34,12 +39,13 @@ export type AsaasPixQrCode = {
 export type AsaasSubscription = {
   id: string
   customer?: string
-  billingType?: AsaasBillingType
+  billingType?: AsaasBillingType | string
   cycle?: string
   value?: number
   status?: string
   nextDueDate?: string
   externalReference?: string
+  deleted?: boolean
 }
 
 export type AsaasWebhookPayload = {

@@ -46,3 +46,9 @@ export function offersFor(kind: CatalogKind, professionals: Professional[]) {
 export function cartLineKey(offer: Pick<CartLine, "serviceId" | "date" | "time">) {
   return `${offer.serviceId}-${offer.date}-${offer.time}`
 }
+
+export function catalogOfferFor(line: Pick<CartLine, "kind" | "professionalId" | "serviceId">, professionals: Professional[]) {
+  return offersFor(line.kind, professionals).find(
+    (offer) => offer.professionalId === line.professionalId && offer.serviceId === line.serviceId,
+  ) ?? null
+}

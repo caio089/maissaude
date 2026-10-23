@@ -2,7 +2,7 @@ import { addDays, addMinutes, formatISO } from "date-fns"
 import { combineDateAndTime, parseDateKey, timeKey, toDateKey } from "@/lib/format"
 import type { Appointment, BlockedSlot, Professional, Service } from "@/lib/types"
 
-const BLOCKING = new Set<Appointment["status"]>(["scheduled", "confirmed", "completed"])
+const BLOCKING = new Set<Appointment["status"]>(["scheduled", "confirmed"])
 
 export function rangesOverlap(startA: Date, endA: Date, startB: Date, endB: Date) {
   return startA < endB && startB < endA
@@ -67,6 +67,19 @@ export interface AvailableSlot {
   time: string
   startsAt: string
   endsAt: string
+}
+
+export function isOpenSlot(options: {
+  professional: Professional
+  service: Service
+  dateKey: string
+  time: string
+  appointments: Appointment[]
+  blockedSlots: BlockedSlot[]
+  now?: Date
+  ignoreAppointmentId?: string
+}) {
+  return availableSlots(options).some((slot) => slot.time === options.time)
 }
 
 export function availableSlots(options: {

@@ -5,13 +5,16 @@ import { create } from "zustand"
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware"
 import { associateQuote, DEFAULT_ASSOCIATE_RULES, normalizeAssociateRules, findActiveAssociate, associateRulesError } from "@/lib/associate-rules"
 import { combineDateAndTime, createId, createReference, toDateKey } from "@/lib/format"
-import { findConflict, serviceOf } from "@/lib/schedule"
+import { catalogOfferFor } from "@/lib/mobile-catalog"
+import { findConflict, isOpenSlot, serviceOf } from "@/lib/schedule"
 import { createSeed, emptyBooking } from "@/lib/seed"
+import { hasErrors, validateAssociateInput, validatePatientInput, validateProfessionalInput } from "@/lib/validation"
 import {
   CHANNEL_NAME,
   SCHEMA_VERSION,
   STORAGE_KEY,
   type AgendaView,
+  type Appointment,
   type AppointmentInput,
   type Associate,
   type AssociateInput,
@@ -87,7 +90,7 @@ export interface DemoStore {
   createAppointment: (input: AppointmentInput) => { ok: true; id: string } | { ok: false; message: string }
   rescheduleAppointment: (id: string, date: string, time: string) => { ok: true } | { ok: false; message: string }
   setAppointmentStatus: (id: string, status: DemoData["appointments"][number]["status"]) => void
-  cancelAppointment: (id: string) => void
+  cancelAppointment: (id: string, scope: "clinic" | "patient") => void
   blockSlot: (input: { professionalId: string; date: string; start: string; end: string; reason: string }) => { ok: true } | { ok: false; message: string }
   removeBlock: (id: string) => void
   settlePayment: (paymentId: string, method: PaymentMethod) => void
@@ -107,6 +110,14 @@ const defaultFilters: MobileFilters = {
   priceMax: 500,
   minRating: 0,
   onlyAvailable: false,
+}
+
+function onClinicSurface() {
+  return typeof window !== "undefined" && window.location.pathname.startsWith("/desktop")
+}
+
+function firstError(errors: Partial<Record<string, string>>) {
+  return Object.values(errors).find((value): value is string => Boolean(value))
 }
 
 function createInitialState() {
@@ -197,6 +208,9 @@ export const useDemoStore = create<DemoStore>()(
         const normalizedCpf = cpf.trim()
         const normalizedPhone = phone.trim()
         const state = get()
+        if (!/^900\.\d{3}\.\d{3}-\d{2}$/.test(normalizedCpf)) {
+          return { ok: false, message: "Use um CPF fictício começando com 900, no formato 900.000.000-00." }
+        }
         if (!/^\(\d{2}\) \d{5}-\d{4}$/.test(normalizedPhone)) {
           return { ok: false, message: "Use um WhatsApp fictício no formato (86) 99000-0000." }
         }
@@ -206,22 +220,8 @@ export const useDemoStore = create<DemoStore>()(
         if (state.mobileAccounts.some((account) => account.cpf === normalizedCpf)) {
           return { ok: false, message: "Este CPF já tem conta nesta demonstração. Entre com a senha." }
         }
-        const existing = state.data.patients.find((patient) => patient.cpf === normalizedCpf)
-        if (existing) {
-          set({
-            mobileAccounts: [...state.mobileAccounts, { cpf: normalizedCpf, patientId: existing.id, passwordHash }],
-            mobileSessionPatientId: existing.id,
-            lastCheckout: null,
-            booking: emptyBooking(),
-            data: {
-              ...state.data,
-              currentPatientId: existing.id,
-              patients: state.data.patients.map((patient) =>
-                patient.id === existing.id ? { ...patient, name: name.trim(), phone: normalizedPhone, birthDate } : patient,
-              ),
-            },
-          })
-          return { ok: true }
+        if (state.data.patients.some((patient) => patient.cpf === normalizedCpf)) {
+          return { ok: false, message: "Este CPF já está no cadastro. A conta do aplicativo não assume ficha existente." }
         }
         const id = createId("pat")
         const contact = nextDemoContact(state.data.patients)
@@ -262,7 +262,13 @@ export const useDemoStore = create<DemoStore>()(
         }))
         return { ok: true }
       },
-      logoutMobileAccount: () => set({ mobileSessionPatientId: null, booking: emptyBooking(), lastCheckout: null }),
+      logoutMobileAccount: () =>
+        set((state) => ({
+          mobileSessionPatientId: null,
+          booking: emptyBooking(),
+          lastCheckout: null,
+          data: { ...state.data, currentPatientId: "" },
+        })),
       adoptPatientSession: (patient) =>
         set((state) => {
           const exists = state.data.patients.some((item) => item.id === patient.id)
@@ -288,6 +294,9 @@ export const useDemoStore = create<DemoStore>()(
           },
         })),
       createAssociate: (input) => {
+        if (!onClinicSurface()) return { ok: false, message: "Só a clínica altera associados neste painel." }
+        const invalid = firstError(validateAssociateInput(input))
+        if (invalid) return { ok: false, message: invalid }
         const conflict = associateConflict(get().associates, input)
         if (conflict) return { ok: false, message: conflict }
         const id = createId("ass")
@@ -304,6 +313,9 @@ export const useDemoStore = create<DemoStore>()(
         return { ok: true, id }
       },
       updateAssociate: (id, input) => {
+        if (!onClinicSurface()) return { ok: false, message: "Só a clínica altera associados neste painel." }
+        const invalid = firstError(validateAssociateInput(input))
+        if (invalid) return { ok: false, message: invalid }
         const conflict = associateConflict(get().associates, input, id)
         if (conflict) return { ok: false, message: conflict }
         set((state) => ({
@@ -327,20 +339,28 @@ export const useDemoStore = create<DemoStore>()(
         const state = get()
         const patient = state.data.patients.find((item) => item.id === state.mobileSessionPatientId)
         if (!patient) return { ok: false, message: "Entre na conta para assinar." }
-        const input: AssociateInput = {
-          name: patient.name,
-          cpf: patient.cpf,
-          phone: patient.phone,
-          email: patient.email,
-          status: "active",
-        }
         const existing = state.associates.find((item) => item.cpf.trim() === patient.cpf.trim())
         if (existing?.status === "active") return { ok: false, message: "Esta conta já tem assinatura de associado." }
-        if (existing) return get().updateAssociate(existing.id, input)
-        const created = get().createAssociate(input)
-        return created.ok ? { ok: true } : created
+        const associate: Associate = existing
+          ? { ...existing, name: patient.name, phone: patient.phone, email: patient.email, status: "active" }
+          : {
+              id: createId("ass"),
+              name: patient.name,
+              cpf: patient.cpf,
+              phone: patient.phone,
+              email: patient.email,
+              status: "active",
+              createdAt: formatISO(new Date()),
+            }
+        set({
+          associates: existing
+            ? state.associates.map((item) => (item.id === associate.id ? associate : item))
+            : [associate, ...state.associates],
+        })
+        return { ok: true }
       },
       updateAssociateRules: (rules) => {
+        if (!onClinicSurface()) return { ok: false, message: "Só a clínica altera as regras de associado." }
         const next = normalizeAssociateRules(rules)
         const message = associateRulesError(next)
         if (message) return { ok: false, message }
@@ -348,6 +368,7 @@ export const useDemoStore = create<DemoStore>()(
         return { ok: true }
       },
       createCashEntry: (input) => {
+        if (!onClinicSurface()) return { ok: false, message: "Só a clínica registra caixa neste painel." }
         const message = cashEntryError(input)
         if (message) return { ok: false, message }
         const id = createId("cash")
@@ -363,8 +384,14 @@ export const useDemoStore = create<DemoStore>()(
         set((state) => ({ cashEntries: [entry, ...state.cashEntries] }))
         return { ok: true, id }
       },
-      removeCashEntry: (id) => set((state) => ({ cashEntries: state.cashEntries.filter((entry) => entry.id !== id) })),
+      removeCashEntry: (id) => {
+        if (!onClinicSurface()) return
+        set((state) => ({ cashEntries: state.cashEntries.filter((entry) => entry.id !== id) }))
+      },
       createPatient: (input) => {
+        if (!onClinicSurface()) return ""
+        const invalid = firstError(validatePatientInput(input))
+        if (invalid) return ""
         const id = createId("pat")
         const patient = {
           id,
@@ -376,23 +403,47 @@ export const useDemoStore = create<DemoStore>()(
         set((state) => ({ data: { ...state.data, patients: [patient, ...state.data.patients] } }))
         return id
       },
-      updatePatient: (id, input) =>
+      updatePatient: (id, input) => {
+        if (!onClinicSurface() || hasErrors(validatePatientInput(input))) return
         set((state) => ({
           data: {
             ...state.data,
             patients: state.data.patients.map((patient) => (patient.id === id ? { ...patient, ...input, name: input.name.trim() } : patient)),
           },
-        })),
+        }))
+      },
       updateCurrentPatient: (patch) =>
-        set((state) => ({
-          data: {
-            ...state.data,
-            patients: state.data.patients.map((patient) =>
-              patient.id === state.data.currentPatientId ? { ...patient, ...patch } : patient,
-            ),
-          },
-        })),
+        set((state) => {
+          const sessionId = state.mobileSessionPatientId
+          if (!sessionId) return state
+          const current = state.data.patients.find((item) => item.id === sessionId)
+          if (!current) return state
+          const next = {
+            name: patch.name?.trim() ?? current.name,
+            phone: patch.phone?.trim() ?? current.phone,
+            email: patch.email?.trim() ?? current.email,
+            city: patch.city?.trim() ?? current.city,
+            cpf: current.cpf,
+            birthDate: current.birthDate,
+            gender: current.gender,
+            address: current.address,
+            status: current.status,
+            notes: current.notes,
+          }
+          if (hasErrors(validatePatientInput(next))) return state
+          return {
+            data: {
+              ...state.data,
+              patients: state.data.patients.map((patient) =>
+                patient.id === sessionId
+                  ? { ...patient, ...next, reminderEnabled: patch.reminderEnabled ?? patient.reminderEnabled }
+                  : patient,
+              ),
+            },
+          }
+        }),
       createProfessional: (input) => {
+        if (!onClinicSurface() || hasErrors(validateProfessionalInput(input))) return ""
         const id = createId("pro")
         const professional = {
           id,
@@ -425,7 +476,8 @@ export const useDemoStore = create<DemoStore>()(
         set((state) => ({ data: { ...state.data, professionals: [...state.data.professionals, professional] } }))
         return id
       },
-      updateProfessional: (id, input) =>
+      updateProfessional: (id, input) => {
+        if (!onClinicSurface() || hasErrors(validateProfessionalInput(input))) return
         set((state) => ({
           data: {
             ...state.data,
@@ -449,15 +501,22 @@ export const useDemoStore = create<DemoStore>()(
               }
             }),
           },
-        })),
+        }))
+      },
       createAppointment: (input) => {
+        if (!onClinicSurface()) return { ok: false, message: "Só a clínica agenda pelo painel." }
         const { data } = get()
         const professional = data.professionals.find((item) => item.id === input.professionalId)
+        const patient = data.patients.find((item) => item.id === input.patientId)
         const service = professional ? serviceOf(professional, input.serviceId) : undefined
-        if (!professional || !service) return { ok: false, message: "Selecione um profissional e um serviço." }
+        if (!patient) return { ok: false, message: "Selecione um paciente cadastrado." }
+        if (!professional?.active || !service) return { ok: false, message: "Selecione um profissional ativo e um serviço." }
         const startsAt = combineDateAndTime(input.date, input.time)
         const endsAt = addMinutes(startsAt, service.durationMin)
         if (startsAt.getTime() <= Date.now()) return { ok: false, message: "Escolha um horário futuro." }
+        if (!isOpenSlot({ professional, service, dateKey: input.date, time: input.time, appointments: data.appointments, blockedSlots: data.blockedSlots })) {
+          return { ok: false, message: "Este horário está fora da grade de atendimento." }
+        }
         const conflict = findConflict(professional.id, startsAt, endsAt, data.appointments, data.blockedSlots)
         if (conflict) return { ok: false, message: conflict.label }
         const appointmentId = createId("apt")
@@ -508,12 +567,18 @@ export const useDemoStore = create<DemoStore>()(
         const professional = data.professionals.find((item) => item.id === current?.professionalId)
         const service = professional && current ? serviceOf(professional, current.serviceId) : undefined
         if (!current || !professional || !service) return { ok: false, message: "Consulta não encontrada." }
-        if (current.status === "cancelled" || current.status === "completed") {
+        if (current.status !== "scheduled" && current.status !== "confirmed") {
           return { ok: false, message: "Esta consulta não pode ser reagendada." }
         }
         const startsAt = combineDateAndTime(date, time)
         const endsAt = addMinutes(startsAt, service.durationMin)
         if (startsAt.getTime() <= Date.now()) return { ok: false, message: "Escolha um horário futuro." }
+        if (!onClinicSurface() && current.patientId !== get().mobileSessionPatientId) {
+          return { ok: false, message: "Esta consulta não pertence à conta logada." }
+        }
+        if (!isOpenSlot({ professional, service, dateKey: date, time, appointments: data.appointments, blockedSlots: data.blockedSlots, ignoreAppointmentId: id })) {
+          return { ok: false, message: "Este horário está fora da grade de atendimento." }
+        }
         const conflict = findConflict(professional.id, startsAt, endsAt, data.appointments, data.blockedSlots, id)
         if (conflict) return { ok: false, message: conflict.label }
         set((state) => ({
@@ -527,27 +592,40 @@ export const useDemoStore = create<DemoStore>()(
         }))
         return { ok: true }
       },
-      setAppointmentStatus: (id, status) =>
+      setAppointmentStatus: (id, status) => {
+        if (!onClinicSurface()) return
         set((state) => ({
           data: {
             ...state.data,
-            appointments: state.data.appointments.map((item) => (item.id === id ? { ...item, status } : item)),
-          },
-        })),
-      cancelAppointment: (id) =>
-        set((state) => ({
-          data: {
-            ...state.data,
-            appointments: state.data.appointments.map((item) => (item.id === id ? { ...item, status: "cancelled" } : item)),
-            payments: state.data.payments.flatMap((payment) => {
-              if (payment.appointmentId !== id) return [payment]
-              if (payment.status === "paid") return [{ ...payment, status: "refunded" as const }]
-              if (payment.status === "pending") return []
-              return [payment]
+            appointments: state.data.appointments.map((item) => {
+              if (item.id !== id) return item
+              return canTransitionAppointment(item.status, status) ? { ...item, status } : item
             }),
           },
-        })),
+        }))
+      },
+      cancelAppointment: (id, scope) =>
+        set((state) => {
+          const appointment = state.data.appointments.find((item) => item.id === id)
+          if (!appointment) return state
+          if (appointment.status === "cancelled" || appointment.status === "completed") return state
+          if (scope === "clinic" && !onClinicSurface()) return state
+          if (scope === "patient" && appointment.patientId !== state.mobileSessionPatientId) return state
+          return {
+            data: {
+              ...state.data,
+              appointments: state.data.appointments.map((item) => (item.id === id ? { ...item, status: "cancelled" as const } : item)),
+              payments: state.data.payments.flatMap((payment) => {
+                if (payment.appointmentId !== id) return [payment]
+                if (payment.status === "paid") return [{ ...payment, status: "refunded" as const }]
+                if (payment.status === "pending") return []
+                return [payment]
+              }),
+            },
+          }
+        }),
       blockSlot: (input) => {
+        if (!onClinicSurface()) return { ok: false, message: "Só a clínica bloqueia horários neste painel." }
         const startsAt = combineDateAndTime(input.date, input.start)
         const endsAt = combineDateAndTime(input.date, input.end)
         if (endsAt <= startsAt) return { ok: false, message: "O fim do bloqueio precisa ser depois do início." }
@@ -571,11 +649,14 @@ export const useDemoStore = create<DemoStore>()(
         }))
         return { ok: true }
       },
-      removeBlock: (id) =>
+      removeBlock: (id) => {
+        if (!onClinicSurface()) return
         set((state) => ({
           data: { ...state.data, blockedSlots: state.data.blockedSlots.filter((item) => item.id !== id) },
-        })),
-      settlePayment: (paymentId, method) =>
+        }))
+      },
+      settlePayment: (paymentId, method) => {
+        if (!onClinicSurface()) return
         set((state) => {
           const payment = state.data.payments.find((item) => item.id === paymentId)
           if (!payment || payment.status !== "pending") return state
@@ -590,20 +671,27 @@ export const useDemoStore = create<DemoStore>()(
               ),
             },
           }
-        }),
+        })
+      },
       simulateCheckout: (method, outcome) => {
-        const { booking, data } = get()
+        const { booking, data, mobileSessionPatientId } = get()
+        if (!mobileSessionPatientId) return { ok: false, message: "Entre na conta para continuar." }
         if (!booking.professionalId || !booking.serviceId || !booking.date || !booking.time) {
           return { ok: false, message: "Complete profissional, serviço, data e horário antes do pagamento." }
         }
         const professional = data.professionals.find((item) => item.id === booking.professionalId)
         const service = professional ? serviceOf(professional, booking.serviceId) : undefined
-        if (!professional || !service) return { ok: false, message: "O serviço selecionado não está mais disponível." }
-        const patient = data.patients.find((item) => item.id === data.currentPatientId)
-        const associate = patient ? findActiveAssociate(get().associates, patient.cpf) : null
+        if (!professional?.active || !service) return { ok: false, message: "O serviço selecionado não está mais disponível." }
+        const patient = data.patients.find((item) => item.id === mobileSessionPatientId)
+        if (!patient) return { ok: false, message: "Entre na conta para continuar." }
+        const associate = findActiveAssociate(get().associates, patient.cpf)
         const quote = associateQuote(service.price, get().associateRules, associate)
         const startsAt = combineDateAndTime(booking.date, booking.time)
         const endsAt = addMinutes(startsAt, service.durationMin)
+        if (startsAt.getTime() <= Date.now()) return { ok: false, message: "Escolha um horário futuro." }
+        if (!isOpenSlot({ professional, service, dateKey: booking.date, time: booking.time, appointments: data.appointments, blockedSlots: data.blockedSlots })) {
+          return { ok: false, message: "Este horário está fora da grade de atendimento." }
+        }
         if (outcome === "declined") {
           const receipt: CheckoutReceipt = {
             reference: createReference(),
@@ -621,7 +709,7 @@ export const useDemoStore = create<DemoStore>()(
                 {
                   id: createId("pay"),
                   appointmentId: null,
-                  patientId: state.data.currentPatientId,
+                  patientId: patient.id,
                   professionalId: professional.id,
                   amount: quote.amount,
                   method,
@@ -658,7 +746,7 @@ export const useDemoStore = create<DemoStore>()(
             appointments: [
               {
                 id: appointmentId,
-                patientId: state.data.currentPatientId,
+                patientId: patient.id,
                 professionalId: professional.id,
                 serviceId: service.id,
                 startsAt: formatISO(startsAt),
@@ -676,7 +764,7 @@ export const useDemoStore = create<DemoStore>()(
               {
                 id: paymentId,
                 appointmentId,
-                patientId: state.data.currentPatientId,
+                patientId: patient.id,
                 professionalId: professional.id,
                 amount: quote.amount,
                 method,
@@ -697,8 +785,9 @@ export const useDemoStore = create<DemoStore>()(
       },
       checkoutCart: (lines, method, outcome) => {
         if (lines.length === 0) return { ok: false, message: "Coloque ao menos um item no carrinho." }
-        const { data } = get()
-        const patient = data.patients.find((item) => item.id === data.currentPatientId)
+        const { data, mobileSessionPatientId } = get()
+        if (!mobileSessionPatientId) return { ok: false, message: "Entre na conta para continuar." }
+        const patient = data.patients.find((item) => item.id === mobileSessionPatientId)
         if (!patient) return { ok: false, message: "Entre na conta para continuar." }
         const associate = findActiveAssociate(get().associates, patient.cpf)
         const rules = get().associateRules
@@ -706,18 +795,24 @@ export const useDemoStore = create<DemoStore>()(
         const prepared: PreparedLine[] = []
         for (const line of lines) {
           const professional = data.professionals.find((item) => item.id === line.professionalId)
-          if (!professional) return { ok: false, message: "Um profissional do carrinho não está mais disponível." }
+          const offer = catalogOfferFor(line, data.professionals)
+          if (!professional?.active || !offer) return { ok: false, message: "Um item do carrinho não está mais disponível." }
           if (!/^\d{4}-\d{2}-\d{2}$/.test(line.date) || !/^\d{2}:\d{2}$/.test(line.time)) {
             return { ok: false, message: "Cada item precisa de dia e horário." }
           }
           const quote = line.kind === "consulta"
-            ? associateQuote(line.price, rules, associate)
-            : { amount: line.price, benefit: null }
+            ? associateQuote(offer.price, rules, associate)
+            : { amount: offer.price, benefit: null }
           const startsAt = combineDateAndTime(line.date, line.time)
-          const endsAt = addMinutes(startsAt, line.durationMin)
+          const endsAt = addMinutes(startsAt, offer.durationMin)
+          if (startsAt.getTime() <= Date.now()) return { ok: false, message: "Escolha horários futuros para todos os itens." }
+          const service = serviceOf(professional, line.serviceId)
+          if (!service || !isOpenSlot({ professional, service, dateKey: line.date, time: line.time, appointments: occupied, blockedSlots: data.blockedSlots })) {
+            return { ok: false, message: `${offer.serviceName} está fora da grade de atendimento.` }
+          }
           if (outcome === "approved") {
             const conflict = findConflict(professional.id, startsAt, endsAt, occupied, data.blockedSlots)
-            if (conflict) return { ok: false, message: `${line.serviceName} nesse horário já foi reservado. Volte e escolha outro.` }
+            if (conflict) return { ok: false, message: `${offer.serviceName} nesse horário já foi reservado. Volte e escolha outro.` }
             occupied.push({
               id: `hold-${prepared.length}`,
               patientId: patient.id,
@@ -733,9 +828,9 @@ export const useDemoStore = create<DemoStore>()(
             })
           }
           prepared.push({
-            line,
+            line: { ...line, price: offer.price, durationMin: offer.durationMin, serviceName: offer.serviceName },
             professional,
-            service: lineService(professional, line),
+            service: lineService(professional, { ...line, price: offer.price, durationMin: offer.durationMin, serviceName: offer.serviceName }),
             amount: quote.amount,
             benefit: quote.benefit,
             startsAt,
@@ -764,7 +859,7 @@ export const useDemoStore = create<DemoStore>()(
                 {
                   id: createId("pay"),
                   appointmentId: null,
-                  patientId: state.data.currentPatientId,
+                  patientId: patient.id,
                   professionalId: prepared[0].professional.id,
                   amount: total,
                   method,
@@ -783,7 +878,7 @@ export const useDemoStore = create<DemoStore>()(
         const createdAt = formatISO(new Date())
         const appointments = prepared.map((item) => ({
           id: createId("apt"),
-          patientId: data.currentPatientId,
+          patientId: patient.id,
           professionalId: item.professional.id,
           serviceId: item.service.id,
           startsAt: formatISO(item.startsAt),
@@ -830,7 +925,7 @@ export const useDemoStore = create<DemoStore>()(
               {
                 id: paymentId,
                 appointmentId: appointments[0]?.id ?? null,
-                patientId: state.data.currentPatientId,
+                patientId: patient.id,
                 professionalId: prepared[0].professional.id,
                 amount: total,
                 method,
@@ -852,19 +947,25 @@ export const useDemoStore = create<DemoStore>()(
         return { ok: true, receipt }
       },
       confirmReschedule: () => {
-        const { booking } = get()
+        const { booking, data, mobileSessionPatientId } = get()
         if (!booking.rescheduleAppointmentId || !booking.date || !booking.time) {
           return { ok: false, message: "Escolha o novo dia e horário." }
         }
+        const appointment = data.appointments.find((item) => item.id === booking.rescheduleAppointmentId)
+        if (!appointment || appointment.patientId !== mobileSessionPatientId) {
+          return { ok: false, message: "Esta consulta não pertence à conta logada." }
+        }
         return get().rescheduleAppointment(booking.rescheduleAppointmentId, booking.date, booking.time)
       },
-      updateRecord: (id, patch) =>
+      updateRecord: (id, patch) => {
+        if (!onClinicSurface()) return
         set((state) => ({
           data: {
             ...state.data,
             records: state.data.records.map((record) => (record.id === id ? { ...record, ...patch } : record)),
           },
-        })),
+        }))
+      },
       resetDemo: () => set(createInitialState()),
       realignToToday: () => {
         const state = get()
@@ -922,6 +1023,18 @@ interface PreparedLine {
   benefit: ReturnType<typeof associateQuote>["benefit"]
   startsAt: Date
   endsAt: Date
+}
+
+const APPOINTMENT_TRANSITIONS: Record<Appointment["status"], Appointment["status"][]> = {
+  scheduled: ["confirmed", "cancelled", "no-show", "completed"],
+  confirmed: ["completed", "cancelled", "no-show"],
+  completed: [],
+  cancelled: [],
+  "no-show": [],
+}
+
+function canTransitionAppointment(from: Appointment["status"], to: Appointment["status"]) {
+  return from === to || APPOINTMENT_TRANSITIONS[from].includes(to)
 }
 
 function lineService(professional: Professional, line: CartLine): Service {

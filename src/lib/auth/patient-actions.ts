@@ -1,10 +1,10 @@
 "use server"
 
-import { AUTH_PASSWORD_MIN, isClinicRole, isPatientRole } from "@/lib/auth/constants"
+import { AUTH_PASSWORD_MIN, CLINIC_AUTH_EMAIL, isClinicRole, isPatientRole } from "@/lib/auth/constants"
 import { requestOrigin } from "@/lib/auth/origin"
 import {
   findPatientByAuthUser,
-  findPatientByCpf,
+  findPatientEmailByAccountEmail,
   findPatientEmailByCpf,
   persistPatientAccount,
 } from "@/lib/auth/patients"
@@ -70,6 +70,7 @@ export async function registerPatientAccount(input: {
     if (signed.error) return { ok: false, message: signed.error.message }
     return { ok: true, patient }
   } catch (error) {
+    await admin.auth.admin.deleteUser(data.user.id)
     return { ok: false, message: error instanceof Error ? error.message : "Não foi possível gravar a conta." }
   }
 }
@@ -95,13 +96,15 @@ export async function loginPatientAccount(input: {
     if (error) return { ok: false, message: "CPF ou senha não conferem." }
     const { data } = await supabase.auth.getClaims()
     const claims = data?.claims as AuthClaims | undefined
-    if (isClinicRole(claims?.app_metadata?.role)) {
+    if (isClinicRole(claims?.app_metadata?.role) || !isPatientRole(claims?.app_metadata?.role)) {
       await supabase.auth.signOut()
       return { ok: false, message: "A conta da clínica não entra no aplicativo do paciente." }
     }
-    const patient =
-      (claims?.sub ? await findPatientByAuthUser(claims.sub) : null) || (await findPatientByCpf(cpf))
-    if (!patient) return { ok: false, message: "Conta encontrada no Auth, mas o cadastro ainda não está no banco." }
+    const patient = claims?.sub ? await findPatientByAuthUser(claims.sub) : null
+    if (!patient) {
+      await supabase.auth.signOut()
+      return { ok: false, message: "Conta encontrada no Auth, mas o cadastro ainda não está no banco." }
+    }
     return { ok: true, patient }
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Não foi possível entrar." }
@@ -122,14 +125,16 @@ export async function recoverPatientPassword(identity: string): Promise<RecoverR
   const configError = authConfigError()
   if (configError) return { ok: false, message: configError.message }
   const value = identity.trim()
-  const email = CPF_PATTERN.test(value)
+  const lookedUp = CPF_PATTERN.test(value)
     ? await findPatientEmailByCpf(value)
     : EMAIL_PATTERN.test(value)
-      ? value.toLowerCase()
+      ? await findPatientEmailByAccountEmail(value.toLowerCase())
       : null
+  const email = lookedUp && lookedUp !== CLINIC_AUTH_EMAIL ? lookedUp : null
   if (email) {
-    const supabase = await createServerSupabase()
     const origin = await requestOrigin()
+    if (!origin) return { ok: false, message: "NEXT_PUBLIC_SITE_URL precisa estar definida para enviar o link." }
+    const supabase = await createServerSupabase()
     await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${origin}/auth/callback?next=/auth/atualizar-senha`,
     })
@@ -143,10 +148,12 @@ export async function updateAccountPassword(password: string): Promise<RecoverRe
   }
   if (!isSupabaseBrowserConfigured()) return { ok: false, message: "Auth ainda não está configurado." }
   const supabase = await createServerSupabase()
+  const { data: claimsData } = await supabase.auth.getClaims()
+  const claims = claimsData?.claims as AuthClaims | undefined
+  if (!claims?.sub) return { ok: false, message: "Entre novamente para alterar a senha." }
   const { error } = await supabase.auth.updateUser({ password: password.trim() })
   if (error) return { ok: false, message: error.message }
-  const { data } = await supabase.auth.getClaims()
-  const role = (data?.claims as AuthClaims | undefined)?.app_metadata?.role
+  const role = claims.app_metadata?.role
   return {
     ok: true,
     notice: "Senha atualizada.",
@@ -189,7 +196,10 @@ function validateRegister(input: {
   if (!CPF_PATTERN.test(cpf)) return { ok: false, message: "Use um CPF fictício começando com 900, no formato 900.000.000-00." }
   if (name.length < 3) return { ok: false, message: "Informe o nome da conta." }
   if (!PHONE_PATTERN.test(phone)) return { ok: false, message: "Use um WhatsApp fictício no formato (86) 99000-0000." }
-  if (!EMAIL_PATTERN.test(email)) return { ok: false, message: "Informe um e-mail válido para recuperar a senha." }
+  if (!EMAIL_PATTERN.test(email) || !email.includes("demo")) {
+    return { ok: false, message: "Use um e-mail de demonstração, por exemplo nome@demonstracao.demo." }
+  }
+  if (email === CLINIC_AUTH_EMAIL) return { ok: false, message: "Este e-mail pertence à equipe da clínica." }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || birthDate > toDateKey(new Date())) {
     return { ok: false, message: "Informe uma data de nascimento que já tenha ocorrido." }
   }

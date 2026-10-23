@@ -17,7 +17,6 @@ import { associateQuote, findActiveAssociate } from "@/lib/associate-rules"
 import { formatDate, formatMoney } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
 import type { CartLine, PaymentMethod } from "@/lib/types"
-import { DEMO_CARD_HINT, hasErrors, validateDemoCard } from "@/lib/validation"
 
 const CPF_PATTERN = /^900\.\d{3}\.\d{3}-\d{2}$/
 const PHONE_PATTERN = /^\(\d{2}\) \d{5}-\d{4}$/
@@ -251,19 +250,11 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
   const total = cart.reduce((sum, item) => sum + lineAmount(item, quote), 0)
   const [method, setMethod] = useState<PaymentMethod>("pix")
   const [processing, setProcessing] = useState(false)
-  const [card, setCard] = useState({ number: "", name: "", expiry: "", cvv: "" })
-  const [errors, setErrors] = useState<Partial<Record<keyof typeof card, string>>>({})
 
   async function pay(outcome: "approved" | "declined") {
-    if (method === "card" && outcome === "approved") {
-      const nextErrors = validateDemoCard(card)
-      setErrors(nextErrors)
-      if (hasErrors(nextErrors)) return
-    }
     setProcessing(true)
     await new Promise((resolve) => window.setTimeout(resolve, 900))
     const result = checkoutCart(cart, method, outcome)
-    setCard({ number: "", name: "", expiry: "", cvv: "" })
     setProcessing(false)
     if (!result.ok) toast.error(result.message)
   }
@@ -275,7 +266,7 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
         <FlowSteps steps={["Carrinho", "Confirmar", "Pagar"]} current={2} />
       </div>
       <h1 className="mt-4 text-2xl font-semibold">Pagamento simulado</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Nada é cobrado de verdade. Depois disto a guia aparece.</p>
+      <p className="mt-1 text-sm text-muted-foreground">Pix ou fatura Asaas. Nada é cobrado de verdade até a chave estar ligada. Depois disto a guia aparece.</p>
       <div className="surface-card mt-4 p-4">
         <ul className="space-y-2 text-sm">
           {cart.map((item) => (
@@ -292,29 +283,14 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
         <button type="button" onClick={() => setMethod("pix")} className={`rounded-2xl py-3 text-sm ${method === "pix" ? "bg-primary text-primary-foreground" : "bg-white ring-1 ring-border"}`}>Pix</button>
-        <button type="button" onClick={() => setMethod("card")} className={`rounded-2xl py-3 text-sm ${method === "card" ? "bg-primary text-primary-foreground" : "bg-white ring-1 ring-border"}`}>Cartão</button>
+        <button type="button" onClick={() => setMethod("card")} className={`rounded-2xl py-3 text-sm ${method === "card" ? "bg-primary text-primary-foreground" : "bg-white ring-1 ring-border"}`}>Fatura</button>
       </div>
       {method === "pix" ? (
         <p className="surface-card mt-4 px-4 py-3 text-sm text-muted-foreground">Pix ilustrativo, sem chave de cobrança. O pagamento aprovado é só da demonstração.</p>
       ) : (
-        <div className="surface-card mt-4 space-y-3 p-4">
-          <label className="block text-sm">Nome fictício
-            <Input className="mt-1 h-10" value={card.name} onChange={(event) => setCard({ ...card, name: event.target.value })} />
-            {errors.name ? <span className="text-xs text-destructive">{errors.name}</span> : null}
-          </label>
-          <label className="block text-sm">Número fictício
-            <Input className="mt-1 h-10" inputMode="numeric" placeholder={DEMO_CARD_HINT} value={card.number} onChange={(event) => setCard({ ...card, number: event.target.value })} />
-            {errors.number ? <span className="text-xs text-destructive">{errors.number}</span> : null}
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm">Validade
-              <Input className="mt-1 h-10" placeholder="12/30" value={card.expiry} onChange={(event) => setCard({ ...card, expiry: event.target.value })} />
-            </label>
-            <label className="block text-sm">CVV
-              <Input className="mt-1 h-10" placeholder="000" value={card.cvv} onChange={(event) => setCard({ ...card, cvv: event.target.value })} />
-            </label>
-          </div>
-        </div>
+        <p className="surface-card mt-4 px-4 py-3 text-sm text-muted-foreground">
+          Fatura da Asaas para cartão, sem coletar dados do cartão neste aplicativo.
+        </p>
       )}
       <Button type="button" className="mt-5 h-12 w-full" disabled={processing || cart.length === 0} onClick={() => void pay("approved")}>
         {processing ? <Loader2 className="animate-spin" /> : null}

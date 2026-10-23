@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { Plus, Search, Users } from "lucide-react"
 import { toast } from "sonner"
 import { FadeIn } from "@/components/shared/fade-in"
@@ -46,12 +46,9 @@ export function PatientsView() {
   }, [data.patients, search, status])
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const rows = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
+  const visiblePage = Math.min(page, pages - 1)
+  const rows = filtered.slice(visiblePage * PAGE_SIZE, visiblePage * PAGE_SIZE + PAGE_SIZE)
   const focused = data.patients.find((patient) => patient.id === focusId) ?? null
-
-  useEffect(() => {
-    setPage(0)
-  }, [search, status])
 
   function openCreate() {
     setEditing(null)

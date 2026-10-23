@@ -468,7 +468,7 @@ export function AgendaView() {
         destructive
         onConfirm={() => {
           if (!cancelId) return
-          cancelAppointment(cancelId)
+          cancelAppointment(cancelId, "clinic")
           setCancelId(null)
           setSelectedId(null)
           toast.success("Consulta cancelada na demonstração.")

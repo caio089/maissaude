@@ -9,10 +9,11 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin"
 
 export type CreateAsaasSubscriptionInput = EnsureAsaasCustomerInput & {
   value: number
-  billingType: Extract<AsaasBillingType, "PIX" | "CREDIT_CARD">
+  billingType?: Extract<AsaasBillingType, "PIX" | "BOLETO">
   nextDueDate?: string
   associateId?: string
   externalReference?: string
+  description?: string
 }
 
 export async function createAsaasSubscription(input: CreateAsaasSubscriptionInput) {
@@ -20,15 +21,17 @@ export async function createAsaasSubscription(input: CreateAsaasSubscriptionInpu
     throw new Error("Informe um valor válido para a mensalidade.")
   }
 
+  const billingType = input.billingType || "PIX"
   const customer = await ensureAsaasCustomer(input)
   const subscription = await asaasFetch<AsaasSubscription>("/subscriptions", {
     method: "POST",
     body: JSON.stringify({
       customer: customer.id,
-      billingType: input.billingType,
+      billingType,
       value: moneyValue(input.value),
       nextDueDate: input.nextDueDate || saoPauloDate(),
       cycle: "MONTHLY",
+      description: (input.description || "Mensalidade de associado CuidarSaude").slice(0, 500),
       externalReference: input.externalReference || input.associateId || input.patientId,
     }),
   })

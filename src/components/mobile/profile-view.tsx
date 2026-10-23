@@ -13,6 +13,7 @@ import { logoutPatientAccount } from "@/lib/auth/patient-actions"
 import { buildNotifications } from "@/lib/metrics"
 import { useDemoStore } from "@/lib/store"
 import { DEMO_CITIES } from "@/lib/types"
+import { hasErrors, validatePatientInput } from "@/lib/validation"
 
 export function MobileProfile() {
   const data = useDemoStore((state) => state.data)
@@ -21,19 +22,22 @@ export function MobileProfile() {
   const updateCurrentPatient = useDemoStore((state) => state.updateCurrentPatient)
   const resetDemo = useDemoStore((state) => state.resetDemo)
   const logoutMobileAccount = useDemoStore((state) => state.logoutMobileAccount)
-  const patient = data.patients.find((item) => item.id === data.currentPatientId)
+  const sessionPatientId = useDemoStore((state) => state.mobileSessionPatientId)
+  const patient = data.patients.find((item) => item.id === sessionPatientId)
   const [name, setName] = useState(patient?.name ?? "")
   const [phone, setPhone] = useState(patient?.phone ?? "")
   const [email, setEmail] = useState(patient?.email ?? "")
   const [confirm, setConfirm] = useState(false)
 
   useEffect(() => {
-    setName(patient?.name ?? "")
-    setPhone(patient?.phone ?? "")
-    setEmail(patient?.email ?? "")
+    queueMicrotask(() => {
+      setName(patient?.name ?? "")
+      setPhone(patient?.phone ?? "")
+      setEmail(patient?.email ?? "")
+    })
   }, [patient?.name, patient?.phone, patient?.email])
   const notifications = buildNotifications(data, new Date()).slice(0, 3)
-  const history = data.appointments.filter((item) => item.patientId === data.currentPatientId).length
+  const history = data.appointments.filter((item) => item.patientId === sessionPatientId).length
 
   if (!patient) return null
 
@@ -74,11 +78,23 @@ export function MobileProfile() {
         <Button
           type="button"
           onClick={() => {
-            if (name.trim().length < 3 || !email.toLowerCase().includes("demo")) {
-              toast.error("Mantenha um nome e um e-mail de demonstração.")
+            const errors = validatePatientInput({
+              name: name.trim(),
+              phone: phone.trim(),
+              email: email.trim(),
+              city: patient.city,
+              cpf: patient.cpf,
+              birthDate: patient.birthDate,
+              gender: patient.gender,
+              address: patient.address,
+              status: patient.status,
+              notes: patient.notes,
+            })
+            if (hasErrors(errors)) {
+              toast.error(errors.phone || errors.email || errors.name || "Mantenha dados fictícios no perfil.")
               return
             }
-            updateCurrentPatient({ name: name.trim(), phone, email })
+            updateCurrentPatient({ name: name.trim(), phone: phone.trim(), email: email.trim() })
             toast.success("Perfil fictício atualizado.")
           }}
         >

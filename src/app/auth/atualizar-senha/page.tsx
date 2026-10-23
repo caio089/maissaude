@@ -1,9 +1,13 @@
 import type { Metadata } from "next"
+import { redirect } from "next/navigation"
 import { UpdatePasswordForm } from "@/components/auth/update-password-form"
+import { currentAuthRole } from "@/lib/auth/role"
 
 export const metadata: Metadata = { title: "Nova senha" }
 
-export default function UpdatePasswordPage() {
+export default async function UpdatePasswordPage() {
+  if (!(await currentAuthRole())) redirect("/auth/recuperar")
+
   return (
     <main className="grid min-h-dvh place-items-center px-4 py-10">
       <div className="w-full max-w-md rounded-[2rem] bg-white p-8 ring-1 ring-foreground/10">

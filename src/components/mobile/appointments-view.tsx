@@ -20,7 +20,8 @@ export function MobileAppointments() {
   const patchBooking = useDemoStore((state) => state.patchBooking)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [cancelId, setCancelId] = useState<string | null>(null)
-  const mine = data.appointments.filter((item) => item.patientId === data.currentPatientId)
+  const sessionPatientId = useDemoStore((state) => state.mobileSessionPatientId)
+  const mine = data.appointments.filter((item) => item.patientId === sessionPatientId)
   const now = new Date()
   const upcoming = mine.filter((item) => (item.status === "scheduled" || item.status === "confirmed") && !isBefore(new Date(item.startsAt), now))
   const previous = mine.filter((item) => item.status === "completed" || item.status === "no-show" || ((item.status === "scheduled" || item.status === "confirmed") && isBefore(new Date(item.startsAt), now)))
@@ -68,7 +69,7 @@ export function MobileAppointments() {
         destructive
         onConfirm={() => {
           if (!cancelId) return
-          cancelAppointment(cancelId)
+          cancelAppointment(cancelId, "patient")
           setCancelId(null)
           setSelectedId(null)
           toast.success("Consulta cancelada na demonstração.")

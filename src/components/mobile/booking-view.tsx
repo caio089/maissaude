@@ -28,9 +28,11 @@ export function BookingView() {
     const professionalChanged = previousProfessional.current !== booking.professionalId
     previousProfessional.current = booking.professionalId
     if (!professionalChanged && !booking.rescheduleAppointmentId) return
-    if (!booking.professionalId) setStep(0)
-    else if (booking.rescheduleAppointmentId) setStep(2)
-    else setStep(1)
+    queueMicrotask(() => {
+      if (!booking.professionalId) setStep(0)
+      else if (booking.rescheduleAppointmentId) setStep(2)
+      else setStep(1)
+    })
   }, [booking.professionalId, booking.rescheduleAppointmentId])
   const professional = data.professionals.find((item) => item.id === booking.professionalId)
   const service = professional?.services.find((item) => item.id === booking.serviceId)

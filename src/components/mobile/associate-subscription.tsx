@@ -5,11 +5,9 @@ import { Check, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { FlowSteps } from "@/components/shared/flow-steps"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { formatMoney } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
-import type { AssociateRules, PaymentMethod } from "@/lib/types"
-import { DEMO_CARD_HINT, hasErrors, validateDemoCard } from "@/lib/validation"
+import type { AssociateRules } from "@/lib/types"
 
 export function AssociatePitch({
   title,
@@ -70,10 +68,7 @@ export function AssociatePayForm({
   className?: string
 }) {
   const fee = useDemoStore((state) => state.associateRules.fee)
-  const [method, setMethod] = useState<PaymentMethod>("pix")
   const [pending, setPending] = useState(false)
-  const [card, setCard] = useState({ number: "", name: "", expiry: "", cvv: "" })
-  const [errors, setErrors] = useState<Partial<Record<keyof typeof card, string>>>({})
   const confirmRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -81,14 +76,8 @@ export function AssociatePayForm({
   }, [])
 
   async function confirm() {
-    if (method === "card") {
-      const nextErrors = validateDemoCard(card)
-      setErrors(nextErrors)
-      if (hasErrors(nextErrors)) return
-    }
     setPending(true)
     await new Promise((resolve) => window.setTimeout(resolve, 700))
-    setCard({ number: "", name: "", expiry: "", cvv: "" })
     await onConfirm()
     setPending(false)
   }
@@ -97,33 +86,12 @@ export function AssociatePayForm({
     <div className={className}>
       <button type="button" onClick={onBack} className="text-sm text-teal">Voltar</button>
       <h1 className="mt-2 text-2xl font-semibold">Confirme a assinatura</h1>
-      <p className="mt-2 text-sm text-muted-foreground">A mensalidade de {formatMoney(fee)} é simulada. Nada é cobrado de verdade.</p>
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <button type="button" onClick={() => setMethod("pix")} className={`rounded-2xl py-3 text-sm ${method === "pix" ? "bg-primary text-primary-foreground" : "bg-white ring-1 ring-border"}`}>Pix</button>
-        <button type="button" onClick={() => setMethod("card")} className={`rounded-2xl py-3 text-sm ${method === "card" ? "bg-primary text-primary-foreground" : "bg-white ring-1 ring-border"}`}>Cartão</button>
-      </div>
-      {method === "card" ? (
-        <div className="mt-4 space-y-3 rounded-3xl bg-white p-4 ring-1 ring-border">
-          <label className="block text-sm">Nome fictício
-            <Input className="mt-1 h-10" value={card.name} onChange={(event) => setCard({ ...card, name: event.target.value })} />
-            {errors.name ? <span className="text-xs text-destructive">{errors.name}</span> : null}
-          </label>
-          <label className="block text-sm">Número fictício
-            <Input className="mt-1 h-10" inputMode="numeric" placeholder={DEMO_CARD_HINT} value={card.number} onChange={(event) => setCard({ ...card, number: event.target.value })} />
-            {errors.number ? <span className="text-xs text-destructive">{errors.number}</span> : null}
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm">Validade
-              <Input className="mt-1 h-10" placeholder="12/30" value={card.expiry} onChange={(event) => setCard({ ...card, expiry: event.target.value })} />
-            </label>
-            <label className="block text-sm">CVV
-              <Input className="mt-1 h-10" placeholder="000" value={card.cvv} onChange={(event) => setCard({ ...card, cvv: event.target.value })} />
-            </label>
-          </div>
-        </div>
-      ) : (
-        <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm text-muted-foreground ring-1 ring-border">Pix ilustrativo da mensalidade, sem chave de cobrança.</p>
-      )}
+      <p className="mt-2 text-sm text-muted-foreground">
+        A mensalidade de {formatMoney(fee)} segue o ciclo mensal da Asaas. Nesta demonstração o Pix ainda é ilustrativo; cartão não é capturado neste aplicativo.
+      </p>
+      <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm text-muted-foreground ring-1 ring-border">
+        Assinatura recorrente via Pix. A Asaas gera as cobranças ao longo do mês; o webhook confirma cada pagamento.
+      </p>
       <div ref={confirmRef}>
         <Button type="button" className="mt-5 h-12 w-full" disabled={pending} onClick={() => void confirm()}>
           {pending ? <Loader2 className="animate-spin" /> : null}

@@ -28,10 +28,15 @@ export function asaasWebhookToken() {
 
 export function isAsaasConfigured() {
   const key = asaasApiKey()
-  return key.startsWith("$aact_")
+  if (asaasEnvironment() === "production") return key.startsWith("$aact_prod_")
+  return key.startsWith("$aact_hmlg_")
 }
 
 export function isAsaasWebhookConfigured() {
   const token = asaasWebhookToken()
-  return token.length >= 32 && token.length <= 255
+  if (token.length < 32 || token.length > 255) return false
+  if (token.includes(" ")) return false
+  if (token.startsWith("$aact_")) return false
+  if (token === asaasApiKey()) return false
+  return true
 }

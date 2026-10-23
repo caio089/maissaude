@@ -6,14 +6,15 @@ import { redirect } from "next/navigation"
 import { ensureClinicAuthUser } from "@/lib/auth/clinic-user"
 import { CLINIC_AUTH_EMAIL, isClinicRole } from "@/lib/auth/constants"
 import { requestOrigin } from "@/lib/auth/origin"
+import { hmacClinicFallbackEnabled } from "@/lib/runtime"
 import {
   CLINIC_COOKIE,
   CLINIC_COOKIE_MAX_AGE,
   clinicCookieOptions,
   clinicCredentialsMatch,
   createClinicToken,
-  verifyClinicToken,
 } from "@/lib/clinic-token"
+import { hasClinicSession } from "@/lib/clinic-session"
 import { isSupabaseAdminConfigured } from "@/lib/supabase/admin"
 import { isSupabaseBrowserConfigured } from "@/lib/supabase/env"
 import { createServerSupabase } from "@/lib/supabase/server"
@@ -29,8 +30,10 @@ export async function loginClinic(_state: ClinicLoginState, formData: FormData):
   }
 
   if (isSupabaseBrowserConfigured() && isSupabaseAdminConfigured()) {
-    const seeded = await ensureClinicAuthUser()
-    if (!seeded.ok) return { error: seeded.message }
+    if (hmacClinicFallbackEnabled()) {
+      const seeded = await ensureClinicAuthUser()
+      if (!seeded.ok) return { error: seeded.message }
+    }
     try {
       const supabase = await createServerSupabase()
       const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -46,6 +49,10 @@ export async function loginClinic(_state: ClinicLoginState, formData: FormData):
       if (isRedirect(error)) throw error
       return { error: error instanceof Error ? error.message : "Não foi possível entrar no painel." }
     }
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return { error: "O painel da clínica exige Auth do Supabase. Configure as variáveis na Vercel." }
   }
 
   if (!(await clinicCredentialsMatch(email, password))) {
@@ -73,38 +80,27 @@ export async function logoutClinic() {
 
 export async function clinicGate() {
   await connection()
-  if (!(await hasClinicAccess())) redirect("/desktop/entrar")
+  if (!(await hasClinicSession())) redirect("/desktop/entrar")
 }
 
 export async function recoverClinicPassword(email: string): Promise<ClinicLoginState> {
   const normalized = email.trim().toLowerCase()
-  if (normalized !== CLINIC_AUTH_EMAIL && !normalized.includes("@")) {
+  if (normalized !== CLINIC_AUTH_EMAIL) {
     return { error: "Informe o e-mail da equipe." }
   }
   if (!isSupabaseBrowserConfigured()) {
     return { error: "O Auth ainda não está configurado para recuperar senha." }
   }
-  const supabase = await createServerSupabase()
   const origin = await requestOrigin()
-  const { error } = await supabase.auth.resetPasswordForEmail(normalized || CLINIC_AUTH_EMAIL, {
+  if (!origin) {
+    return { error: "NEXT_PUBLIC_SITE_URL precisa estar definida para enviar o link de recuperação." }
+  }
+  const supabase = await createServerSupabase()
+  const { error } = await supabase.auth.resetPasswordForEmail(CLINIC_AUTH_EMAIL, {
     redirectTo: `${origin}/auth/callback?next=/auth/atualizar-senha`,
   })
   if (error) return { error: error.message }
   return { notice: "Se o e-mail existir no Auth, enviamos o link para criar uma nova senha." }
-}
-
-async function hasClinicAccess() {
-  if (isSupabaseBrowserConfigured()) {
-    try {
-      const supabase = await createServerSupabase()
-      const { data } = await supabase.auth.getClaims()
-      if (isClinicRole((data?.claims as AuthClaims | undefined)?.app_metadata?.role)) return true
-    } catch {
-      // Cai no cookie HMAC.
-    }
-  }
-  const token = (await cookies()).get(CLINIC_COOKIE)?.value
-  return verifyClinicToken(token, Date.now())
 }
 
 function isRedirect(error: unknown) {

@@ -55,10 +55,17 @@ export async function persistPatientAccount(input: {
     .select("patient_id")
     .eq("cpf", input.cpf)
     .maybeSingle()
-  const { data: existingPatient } = await admin.from("patients").select("id").eq("cpf", input.cpf).maybeSingle()
+  if (existingAccount?.patient_id) {
+    throw new Error("Este CPF já tem conta. Entre com a senha ou recupere o acesso.")
+  }
 
-  const patientId = existingAccount?.patient_id || existingPatient?.id || createId("pat")
-  const patientPayload = {
+  const { data: existingPatient } = await admin.from("patients").select("id").eq("cpf", input.cpf).maybeSingle()
+  if (existingPatient?.id) {
+    throw new Error("Este CPF já está no cadastro da clínica. A conta do aplicativo só nasce com CPF novo.")
+  }
+
+  const patientId = createId("pat")
+  const { error: patientError } = await admin.from("patients").insert({
     id: patientId,
     name: input.name,
     cpf: input.cpf,
@@ -71,9 +78,7 @@ export async function persistPatientAccount(input: {
     status: "active",
     notes: "Conta criada no aplicativo e gravada no Auth.",
     reminder_enabled: true,
-  }
-
-  const { error: patientError } = await admin.from("patients").upsert(patientPayload)
+  })
   if (patientError) throw new Error(patientError.message)
 
   const { error: accountError } = await admin.from("mobile_accounts").upsert({
@@ -102,6 +107,13 @@ export async function findPatientEmailByCpf(cpf: string) {
   const admin = createSupabaseAdmin()
   if (!admin) return null
   const { data } = await admin.from("mobile_accounts").select("email").eq("cpf", cpf).maybeSingle()
+  return data?.email?.trim() || null
+}
+
+export async function findPatientEmailByAccountEmail(email: string) {
+  const admin = createSupabaseAdmin()
+  if (!admin) return null
+  const { data } = await admin.from("mobile_accounts").select("email").eq("email", email).maybeSingle()
   return data?.email?.trim() || null
 }
 

@@ -12,7 +12,7 @@ export default function ClinicLoginPage() {
         <aside className="hidden bg-brand p-8 text-white lg:flex lg:flex-col lg:justify-between">
           <Logo light />
           <div>
-            <p className="text-sm text-white/70">Unidade de demonstração</p>
+            <p className="text-sm text-white/70">Unidade de saúde</p>
             <h2 className="mt-2 text-3xl font-semibold tracking-tight">Painel da equipe</h2>
             <p className="mt-3 text-sm leading-6 text-white/75">
               Agenda, pacientes, associados, financeiro e profissionais. A conta do aplicativo não entra aqui.
@@ -21,7 +21,7 @@ export default function ClinicLoginPage() {
           <ul className="space-y-2 text-sm text-white/80">
             <li>Agenda do dia e da semana</li>
             <li>Mensalidades dos associados</li>
-            <li>Pagamentos simulados do aplicativo</li>
+            <li>Pagamentos do aplicativo</li>
           </ul>
         </aside>
         <div className="p-8">

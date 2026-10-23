@@ -9,15 +9,15 @@ import { Button } from "@/components/ui/button"
 const STEPS = [
   { n: "01", title: "Conta do paciente", text: "CPF, nome, WhatsApp, nascimento e senha. Depois, se quiser, assina a associação." },
   { n: "02", title: "Catálogo e carrinho", text: "Médicos, consultas, exames e cirurgias entram no pedido com dia e horário." },
-  { n: "03", title: "Pagamento e guia", text: "A pessoa confirma, paga na simulação e baixa a guia de autorização." },
-  { n: "04", title: "A clínica vê na hora", text: "A reserva entra na agenda e o valor, no financeiro deste navegador." },
+  { n: "03", title: "Pagamento e guia", text: "A pessoa confirma o pagamento e baixa a guia de autorização." },
+  { n: "04", title: "A clínica vê na hora", text: "A reserva entra na agenda e o recebimento, no financeiro." },
 ]
 
 const FEATURES = [
   { icon: CalendarDays, title: "Agenda da unidade", text: "O dia, a semana e o cadastro na hora do agendamento." },
   { icon: Wallet, title: "Financeiro", text: "Pagamentos do app, mensalidades de associados e lançamentos manuais." },
   { icon: IdCard, title: "Associados", text: "Assinatura mensal, desconto na consulta e direitos do pacote." },
-  { icon: Stethoscope, title: "Equipe", text: "Profissionais, especialidades e horários da demonstração." },
+  { icon: Stethoscope, title: "Equipe", text: "Profissionais, especialidades e horários da unidade." },
 ]
 
 export function LandingView() {
@@ -26,7 +26,6 @@ export function LandingView() {
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <Logo />
         <nav className="flex items-center gap-2 text-sm">
-          <Link href="/demo" className="hidden rounded-full px-3 py-2 text-muted-foreground hover:text-foreground sm:inline">Roteiro</Link>
           <Button asChild><Link href="/desktop/entrar">Entrar no painel</Link></Button>
         </nav>
       </header>
@@ -38,14 +37,11 @@ export function LandingView() {
               A clínica organizada. O paciente no centro.
             </h1>
             <p className="mt-5 max-w-lg text-lg leading-8 text-muted-foreground">
-              CuidarSaude é uma demonstração navegável de gestão e agendamento. Os dados e pagamentos são fictícios e ficam só neste navegador.
+              CuidarSaude reúne gestão clínica, agendamentos, pacientes e pagamentos em um só lugar.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button asChild className="h-12 px-5">
                 <Link href="/desktop/entrar">Entrar no painel da clínica <ArrowRight /></Link>
-              </Button>
-              <Button asChild variant="outline" className="h-12 bg-white px-5">
-                <Link href="/demo">Ver o roteiro</Link>
               </Button>
             </div>
             <div className="mt-8 flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -59,15 +55,15 @@ export function LandingView() {
             <div className="rounded-[2rem] bg-brand p-6 text-white shadow-[0_30px_80px_-40px_rgba(13,59,76,0.8)]">
               <div className="flex items-center justify-between text-sm text-white/70">
                 <span>Hoje na unidade</span>
-                <span>Teresina</span>
+                <span>Agenda</span>
               </div>
-              <p className="mt-8 text-sm text-white/70">Receita simulada</p>
-              <p className="mt-1 text-4xl font-semibold">R$ 18.640</p>
+              <p className="mt-8 text-sm text-white/70">Pronto para começar</p>
+              <p className="mt-1 text-2xl font-semibold">Cadastre sua equipe</p>
               <div className="mt-8 space-y-3">
-                {["08:00 Helena Duarte", "09:20 Lívia Campos", "14:00 Beatriz Lemos"].map((item) => (
+                {["Profissionais", "Pacientes", "Agenda e pagamentos"].map((item) => (
                   <div key={item} className="flex items-center justify-between rounded-2xl bg-white/8 px-4 py-3">
                     <span>{item}</span>
-                    <span className="text-xs text-teal-100">confirmada</span>
+                    <span className="text-xs text-teal-100">organizado</span>
                   </div>
                 ))}
               </div>

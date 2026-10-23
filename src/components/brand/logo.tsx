@@ -9,7 +9,7 @@ export function Logo({ light = false, compact = false }: { light?: boolean; comp
       {compact ? null : (
         <span className="leading-tight">
           <span className="block text-sm font-semibold tracking-tight">CuidarSaude</span>
-          <span className={`block text-[11px] ${light ? "text-white/70" : "text-muted-foreground"}`}>Demonstração</span>
+          <span className={`block text-[11px] ${light ? "text-white/70" : "text-muted-foreground"}`}>Gestão de saúde</span>
         </span>
       )}
     </span>

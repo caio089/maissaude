@@ -19,11 +19,11 @@ import { SPECIALTIES, SPECIALTY_LABEL, type Professional, type ProfessionalInput
 import { hasErrors, validateProfessionalInput } from "@/lib/validation"
 
 const blank = (): ProfessionalInput => ({
-  name: "Dra. Nova Demonstração",
+  name: "",
   specialty: "clinica-geral",
-  credentialCode: "DEMO-CRM-NV-09",
-  bio: "Profissional fictício incluído durante a apresentação comercial.",
-  price: 200,
+  credentialCode: "",
+  bio: "",
+  price: 0,
   workDays: [1, 2, 3, 4, 5],
   startHour: "08:00",
   endHour: "18:00",
@@ -74,11 +74,11 @@ export function ProfessionalsView() {
     if (hasErrors(nextErrors)) return
     if (editing) {
       updateProfessional(editing.id, form)
-      toast.success("Profissional de demonstração atualizado.")
+      toast.success("Profissional atualizado.")
     } else {
       const id = createProfessional(form)
       setSelectedId(id)
-      toast.success("Profissional fictício adicionado.")
+      toast.success("Profissional adicionado.")
     }
     setOpen(false)
   }
@@ -89,13 +89,13 @@ export function ProfessionalsView() {
         <div>
           <p className="section-kicker">Clínica</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Equipe</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Oito profissionais do roteiro, com registros e avaliações claramente demonstrativos.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Cadastre os profissionais que atendem na sua unidade.</p>
         </div>
         <Button type="button" onClick={openCreate}><Plus /> Novo profissional</Button>
       </div>
       <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <div className="panel max-h-[72dvh] overflow-y-auto p-2">
-          {professionals.map((professional) => (
+          {professionals.length === 0 ? <p className="px-3 py-4 text-sm text-muted-foreground">Nenhum profissional cadastrado.</p> : professionals.map((professional) => (
             <button key={professional.id} type="button" onClick={() => setSelectedId(professional.id)} className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left ${professional.id === selected?.id ? "bg-accent" : "hover:bg-muted"}`}>
               <Portrait seed={professional.avatarSeed} name={professional.name} />
               <span className="min-w-0">
@@ -121,7 +121,7 @@ export function ProfessionalsView() {
               </div>
               <div className="text-right">
                 <p className="text-2xl font-semibold">{formatMoney(selected.price)}</p>
-                <p className="text-xs text-muted-foreground">consulta de demonstração</p>
+                <p className="text-xs text-muted-foreground">valor da consulta</p>
               </div>
             </div>
             <p className="mt-5 max-w-2xl text-sm leading-6 text-muted-foreground">{selected.bio}</p>
@@ -135,7 +135,7 @@ export function ProfessionalsView() {
               {selected.services.map((service) => (
                 <div key={service.id} className="rounded-2xl bg-muted/70 p-4">
                   <p className="text-sm font-medium">{service.name}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{service.durationMin} min · {service.modality === "teleconsulta" ? "teleconsulta demonstrativa" : "presencial"}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{service.durationMin} min · {service.modality === "teleconsulta" ? "teleconsulta" : "presencial"}</p>
                   <p className="mt-2 font-medium">{formatMoney(service.price)}</p>
                 </div>
               ))}
@@ -144,7 +144,7 @@ export function ProfessionalsView() {
               <div className="flex items-center gap-2">
                 <Star className="size-4 fill-amber-400 text-amber-400" />
                 <p className="font-medium">{selected.rating.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p>
-                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">Avaliação de demonstração</span>
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">Avaliações</span>
               </div>
               <ul className="mt-3 space-y-2">
                 {selected.reviews.map((review) => (
@@ -173,7 +173,7 @@ export function ProfessionalsView() {
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader><DialogTitle>{editing ? "Editar profissional" : "Novo profissional fictício"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? "Editar profissional" : "Novo profissional"}</DialogTitle></DialogHeader>
           <div className="grid gap-3">
             <Field label="Nome" htmlFor="pro-name" error={errors.name}>
               <Input id="pro-name" className="h-10" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
@@ -186,7 +186,7 @@ export function ProfessionalsView() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Registro demonstrativo" htmlFor="pro-credential" error={errors.credentialCode} hint="Precisa começar com DEMO-.">
+            <Field label="Registro profissional" htmlFor="pro-credential" error={errors.credentialCode}>
               <Input id="pro-credential" className="h-10" value={form.credentialCode} onChange={(event) => setForm({ ...form, credentialCode: event.target.value })} />
             </Field>
             <Field label="Valor da consulta" htmlFor="pro-price" error={errors.price}>

@@ -58,7 +58,7 @@ export function DashboardView() {
 
       <section className="grid gap-4 lg:grid-cols-12">
         <article className="relative overflow-hidden rounded-3xl bg-brand p-6 text-white lg:col-span-5">
-          <p className="text-sm text-white/75">Receita simulada do período</p>
+          <p className="text-sm text-white/75">Receita do período</p>
           <p className="mt-3 text-4xl font-semibold tracking-tight">{formatMoney(metrics.revenue)}</p>
           <p className="mt-2 text-sm text-white/75">
             {metrics.revenueDelta >= 0 ? "Alta" : "Queda"} de {percent(Math.abs(metrics.revenueDelta))} em relação ao período anterior.
@@ -105,7 +105,7 @@ export function DashboardView() {
             <Link href="/desktop/agenda" className="text-sm text-teal hover:underline">Abrir</Link>
           </div>
           <ol className="mt-4 space-y-3">
-            {today.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma consulta fictícia para hoje.</p> : null}
+            {today.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma consulta para hoje.</p> : null}
             {today.map((item) => {
               const patient = data.patients.find((person) => person.id === item.patientId)
               const professional = data.professionals.find((person) => person.id === item.professionalId)

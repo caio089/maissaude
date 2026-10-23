@@ -60,7 +60,7 @@ export function AssociatesView() {
     const nextErrors = validateAssociateInput(form)
     const others = associates.filter((associate) => associate.id !== editing?.id)
     if (others.some((associate) => associate.cpf.trim() === form.cpf.trim())) {
-      nextErrors.cpf = "Este CPF fictício já está cadastrado como associado."
+      nextErrors.cpf = "Este CPF já está cadastrado como associado."
     }
     setErrors(nextErrors)
     if (hasErrors(nextErrors)) return
@@ -100,7 +100,7 @@ export function AssociatesView() {
           <EmptyState
             icon={IdCard}
             title="Nenhum associado cadastrado"
-            description="Cadastre os associados fictícios. O associado ativo usa transporte, desconto na consulta pelo aplicativo e os outros direitos do pacote."
+            description="Cadastre os associados e acompanhe os benefícios vinculados ao plano."
             action={<Button type="button" onClick={openCreate}>Cadastrar</Button>}
           />
         ) : (
@@ -120,7 +120,7 @@ export function AssociatesView() {
                 <TableRow key={associate.id}>
                   <TableCell>
                     <span className="block font-medium">{associate.name}</span>
-                    <span className="block text-xs text-muted-foreground">CPF demonstrativo {associate.cpf}</span>
+                    <span className="block text-xs text-muted-foreground">CPF {associate.cpf}</span>
                   </TableCell>
                   <TableCell>
                     <span className="block">{associate.phone}</span>
@@ -148,13 +148,13 @@ export function AssociatesView() {
             <Field label="Nome" htmlFor="associate-name" error={errors.name}>
               <Input id="associate-name" className="h-10" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
             </Field>
-            <Field label="CPF fictício" htmlFor="associate-cpf" error={errors.cpf} hint="Comece com 900.">
+            <Field label="CPF" htmlFor="associate-cpf" error={errors.cpf}>
               <Input id="associate-cpf" className="h-10" value={form.cpf} onChange={(event) => setForm({ ...form, cpf: event.target.value })} />
             </Field>
-            <Field label="Telefone fictício" htmlFor="associate-phone" error={errors.phone}>
+            <Field label="Telefone" htmlFor="associate-phone" error={errors.phone}>
               <Input id="associate-phone" className="h-10" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
             </Field>
-            <Field label="E-mail de demonstração" htmlFor="associate-email" error={errors.email}>
+            <Field label="E-mail" htmlFor="associate-email" error={errors.email}>
               <Input id="associate-email" className="h-10" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
             </Field>
             <Field label="Status">

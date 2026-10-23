@@ -197,7 +197,7 @@ function NotificationBell() {
           <SheetTitle>Central da clínica</SheetTitle>
         </SheetHeader>
         <div className="space-y-3 px-4 pb-6">
-          <p className="text-xs text-muted-foreground">Alertas calculados com os dados fictícios desta demonstração.</p>
+          <p className="text-xs text-muted-foreground">Alertas calculados a partir da agenda e dos pagamentos.</p>
           {items.map((item) => (
             <Link key={item.id} href={item.href} onClick={() => setOpen(false)} className="block rounded-2xl bg-muted/70 p-4 hover:bg-accent">
               <p className="text-sm font-medium">{item.title}</p>
@@ -229,7 +229,7 @@ function ClinicMenu() {
             <span className="block font-normal text-muted-foreground">{clinic.city}</span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setConfirm(true)}>Reiniciar demonstração</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setConfirm(true)}>Limpar dados locais</DropdownMenuItem>
           <DropdownMenuItem
             onSelect={(event) => {
               event.preventDefault()
@@ -243,14 +243,14 @@ function ClinicMenu() {
       <ConfirmDialog
         open={confirm}
         onOpenChange={setConfirm}
-        title="Reiniciar demonstração?"
-        description="Todos os agendamentos, pagamentos e edições feitos nesta apresentação voltam aos dados iniciais."
-        confirmLabel="Restaurar dados"
+        title="Limpar dados locais?"
+        description="Todos os agendamentos, pagamentos e edições salvos neste navegador serão removidos."
+        confirmLabel="Limpar dados"
         destructive
         onConfirm={() => {
           resetDemo()
           setConfirm(false)
-          toast.success("Demonstração restaurada.")
+          toast.success("Dados locais removidos.")
         }}
       />
     </>

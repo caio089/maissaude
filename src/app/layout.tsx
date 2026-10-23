@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     default: "CuidarSaude",
     template: "%s · CuidarSaude",
   },
-  description: "Demonstração comercial de gestão de clínicas e agendamento. Dados e pagamentos fictícios.",
+  description: "Gestão de clínicas, agendamentos e pagamentos.",
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

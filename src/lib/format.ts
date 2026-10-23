@@ -75,8 +75,8 @@ export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
 }
 
 export const METHOD_LABEL: Record<PaymentMethod, string> = {
-  pix: "Pix simulado",
-  card: "Cartão simulado",
+  pix: "Pix",
+  card: "Cartão",
 }
 
 export function greeting(date: Date) {
@@ -93,7 +93,7 @@ export function createId(prefix: string) {
 
 export function createReference() {
   const token = crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase()
-  return `SP-DEMO-${token}`
+  return `CS-${token}`
 }
 
 export function percent(value: number) {

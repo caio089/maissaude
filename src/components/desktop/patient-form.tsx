@@ -17,20 +17,19 @@ interface ExistingPatient {
   phone: string
   email: string
 }
-
 export function emptyPatientForm(patients: ExistingPatient[]): PatientInput {
-  const contact = nextDemoContact(patients)
+  void patients
   return {
     name: "",
-    cpf: contact.cpf,
-    phone: contact.phone,
-    email: contact.email,
-    birthDate: "1990-01-15",
+    cpf: "",
+    phone: "",
+    email: "",
+    birthDate: "",
     gender: "Feminino",
-    address: "Rua da Demonstração, 200",
-    city: "Teresina - PI",
+    address: "",
+    city: "",
     status: "active",
-    notes: "Cadastro fictício criado durante a demonstração.",
+    notes: "",
   }
 }
 
@@ -38,13 +37,13 @@ export function patientFormErrors(form: PatientInput, patients: ExistingPatient[
   const errors = validatePatientInput(form)
   const others = patients.filter((patient) => patient.id !== ignoreId)
   if (others.some((patient) => patient.cpf.trim() === form.cpf.trim())) {
-    errors.cpf = "Este CPF fictício já está cadastrado."
+    errors.cpf = "Este CPF já está cadastrado."
   }
   if (others.some((patient) => patient.phone.trim() === form.phone.trim())) {
-    errors.phone = "Este telefone fictício já está cadastrado."
+    errors.phone = "Este telefone já está cadastrado."
   }
   if (others.some((patient) => patient.email.trim().toLowerCase() === form.email.trim().toLowerCase())) {
-    errors.email = "Este e-mail de demonstração já está cadastrado."
+    errors.email = "Este e-mail já está cadastrado."
   }
   return errors
 }
@@ -65,13 +64,13 @@ export function PatientFields({
       <Field label="Nome" htmlFor={`${idPrefix}-name`} error={errors.name}>
         <Input id={`${idPrefix}-name`} className="h-10" value={form.name} onChange={(event) => onChange({ ...form, name: event.target.value })} />
       </Field>
-      <Field label="CPF fictício" htmlFor={`${idPrefix}-cpf`} error={errors.cpf} hint="Comece com 900.">
+      <Field label="CPF" htmlFor={`${idPrefix}-cpf`} error={errors.cpf}>
         <Input id={`${idPrefix}-cpf`} className="h-10" value={form.cpf} onChange={(event) => onChange({ ...form, cpf: event.target.value })} />
       </Field>
-      <Field label="Telefone fictício" htmlFor={`${idPrefix}-phone`} error={errors.phone}>
+      <Field label="Telefone" htmlFor={`${idPrefix}-phone`} error={errors.phone}>
         <Input id={`${idPrefix}-phone`} className="h-10" value={form.phone} onChange={(event) => onChange({ ...form, phone: event.target.value })} />
       </Field>
-      <Field label="E-mail de demonstração" htmlFor={`${idPrefix}-email`} error={errors.email}>
+      <Field label="E-mail" htmlFor={`${idPrefix}-email`} error={errors.email}>
         <Input id={`${idPrefix}-email`} className="h-10" value={form.email} onChange={(event) => onChange({ ...form, email: event.target.value })} />
       </Field>
       <Field label="Nascimento" htmlFor={`${idPrefix}-birth`} error={errors.birthDate}>
@@ -129,22 +128,4 @@ export function PatientForm({
       </DialogContent>
     </Dialog>
   )
-}
-
-function nextDemoContact(patients: ExistingPatient[]) {
-  const used = new Set(patients.flatMap((patient) => [patient.cpf, patient.phone, patient.email.toLowerCase()]))
-  for (let sequence = 26; sequence < 900; sequence += 1) {
-    const code = String(sequence).padStart(3, "0")
-    const cpf = `900.100.${code}-10`
-    const phone = `(86) 99000-${code}0`
-    const email = `paciente.${code}@demonstracao.demo`
-    if (!used.has(cpf) && !used.has(phone) && !used.has(email)) {
-      return { cpf, phone, email }
-    }
-  }
-  return {
-    cpf: "900.900.000-10",
-    phone: "(86) 99000-9000",
-    email: "paciente.extra@demonstracao.demo",
-  }
 }

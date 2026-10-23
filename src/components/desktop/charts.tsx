@@ -64,7 +64,7 @@ export function RevenueArea({ data }: { data: Point[] }) {
             width={48}
           />
           <Tooltip content={<ChartTooltip money />} />
-          <Area type="monotone" dataKey="revenue" name="Receita simulada" stroke="#0d3b4c" strokeWidth={2} fill="url(#revenue-fill)" />
+          <Area type="monotone" dataKey="revenue" name="Receita" stroke="#0d3b4c" strokeWidth={2} fill="url(#revenue-fill)" />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -96,7 +96,7 @@ export function MonthlyBars({ data }: { data: Array<{ label: string; revenue: nu
           <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: "#5d727c", fontSize: 12 }} />
           <YAxis tickLine={false} axisLine={false} tick={{ fill: "#5d727c", fontSize: 12 }} tickFormatter={(value: number) => `${Math.round(value / 1000)}k`} width={36} />
           <Tooltip content={<ChartTooltip money />} />
-          <Bar dataKey="revenue" name="Receita simulada" fill="#0d3b4c" radius={[6, 6, 0, 0]} />
+          <Bar dataKey="revenue" name="Receita" fill="#0d3b4c" radius={[6, 6, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

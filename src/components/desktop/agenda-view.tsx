@@ -74,7 +74,7 @@ export function AgendaView() {
     date: toDateKey(selected),
     start: "11:20",
     end: "12:00",
-    reason: "Bloqueio demonstrativo",
+    reason: "Horário indisponível",
   })
 
   const professionals = data.professionals.filter((item) => {
@@ -143,7 +143,7 @@ export function AgendaView() {
     setCreateOpen(false)
     setRegistering(false)
     setAgendaDate(draft.date)
-    toast.success(registering ? "Paciente cadastrado e consulta agendada." : "Agendamento fictício criado.")
+    toast.success(registering ? "Paciente cadastrado e consulta agendada." : "Agendamento criado.")
   }
 
   const draftProfessional = data.professionals.find((item) => item.id === draft.professionalId)
@@ -286,7 +286,7 @@ export function AgendaView() {
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Novo agendamento</DialogTitle>
-            <DialogDescription>Escolha um paciente já cadastrado ou registre um cadastro fictício antes de confirmar a consulta.</DialogDescription>
+            <DialogDescription>Escolha um paciente já cadastrado ou registre um novo paciente antes de confirmar a consulta.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             {registering ? (
@@ -363,7 +363,7 @@ export function AgendaView() {
               </div>
             </Field>
             <Field label="Observação" htmlFor="agenda-notes">
-              <Textarea id="agenda-notes" value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Observação administrativa da demonstração" />
+              <Textarea id="agenda-notes" value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Observação administrativa" />
             </Field>
           </div>
           <DialogFooter>
@@ -384,7 +384,7 @@ export function AgendaView() {
               onRescheduleChange={setReschedule}
               onConfirm={() => {
                 setAppointmentStatus(selectedAppointment.id, "confirmed")
-                toast.success("Presença confirmada na demonstração.")
+                toast.success("Presença confirmada.")
               }}
               onComplete={() => {
                 setAppointmentStatus(selectedAppointment.id, "completed")
@@ -414,7 +414,7 @@ export function AgendaView() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Bloquear horário</DialogTitle>
-            <DialogDescription>O intervalo fica indisponível para novos agendamentos desta demonstração.</DialogDescription>
+            <DialogDescription>O intervalo fica indisponível para novos agendamentos.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <Field label="Profissional">
@@ -463,7 +463,7 @@ export function AgendaView() {
         open={Boolean(cancelId)}
         onOpenChange={(open) => !open && setCancelId(null)}
         title="Cancelar consulta?"
-        description="O horário volta a ficar disponível. Se havia pagamento simulado recebido, ele aparece como estorno demonstrativo."
+        description="O horário volta a ficar disponível. Pagamentos recebidos podem ser estornados conforme as regras da clínica."
         confirmLabel="Cancelar consulta"
         destructive
         onConfirm={() => {
@@ -471,7 +471,7 @@ export function AgendaView() {
           cancelAppointment(cancelId, "clinic")
           setCancelId(null)
           setSelectedId(null)
-          toast.success("Consulta cancelada na demonstração.")
+          toast.success("Consulta cancelada.")
         }}
       />
     </FadeIn>

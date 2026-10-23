@@ -15,7 +15,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       try {
         useDemoStore.getState().realignToToday()
       } catch (error) {
-        console.error("Falha ao preparar a demonstração", error)
+        console.error("Falha ao preparar os dados locais", error)
       }
     }
     align()
@@ -44,8 +44,8 @@ function BootScreen() {
       <div className="flex flex-col items-center gap-4 text-center">
         <Logo />
         <div>
-          <p className="text-sm font-medium text-foreground">Preparando a demonstração</p>
-          <p className="mt-1 text-sm text-muted-foreground">Carregando dados fictícios neste navegador.</p>
+          <p className="text-sm font-medium text-foreground">Preparando o sistema</p>
+          <p className="mt-1 text-sm text-muted-foreground">Carregando seus dados.</p>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
-export const SCHEMA_VERSION = 1
+// Invalida dados demonstrativos salvos no localStorage em versões anteriores.
+export const SCHEMA_VERSION = 2
 
 export const SPECIALTIES = [
   "clinica-geral",

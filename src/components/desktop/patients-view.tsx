@@ -81,11 +81,11 @@ export function PatientsView() {
     if (hasErrors(nextErrors)) return
     if (editing) {
       updatePatient(editing.id, form)
-      toast.success("Cadastro fictício atualizado.")
+      toast.success("Cadastro atualizado.")
     } else {
       const id = createPatient(form)
       setFocusId(id)
-      toast.success("Paciente de demonstração cadastrado.")
+      toast.success("Paciente cadastrado.")
     }
     setFormOpen(false)
   }
@@ -96,7 +96,7 @@ export function PatientsView() {
         <div>
           <p className="section-kicker">Cadastro</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Pacientes</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{data.patients.length} cadastros fictícios. Nenhum dado real é armazenado.</p>
+          <p className="mt-1 text-sm text-muted-foreground">{data.patients.length} {data.patients.length === 1 ? "paciente cadastrado" : "pacientes cadastrados"}.</p>
         </div>
         <Button type="button" onClick={openCreate}><Plus /> Novo paciente</Button>
       </div>
@@ -118,7 +118,7 @@ export function PatientsView() {
 
       <div className="panel overflow-hidden">
         {rows.length === 0 ? (
-          <EmptyState icon={Users} title="Nenhum paciente encontrado" description="Ajuste a pesquisa ou cadastre um paciente fictício para continuar o roteiro." action={<Button type="button" onClick={openCreate}>Cadastrar</Button>} />
+          <EmptyState icon={Users} title="Nenhum paciente encontrado" description="Ajuste a pesquisa ou cadastre o primeiro paciente." action={<Button type="button" onClick={openCreate}>Cadastrar</Button>} />
         ) : (
           <Table>
             <TableHeader>
@@ -143,7 +143,7 @@ export function PatientsView() {
                         <Portrait seed={patient.name} name={patient.name} className="size-9" />
                         <span>
                           <span className="block font-medium">{patient.name}</span>
-                          <span className="block text-xs text-muted-foreground">CPF demonstrativo {patient.cpf}</span>
+                          <span className="block text-xs text-muted-foreground">CPF {patient.cpf}</span>
                         </span>
                       </span>
                     </TableCell>
@@ -173,7 +173,7 @@ export function PatientsView() {
         </div>
       </div>
 
-      <PatientForm open={formOpen} title={editing ? "Editar paciente" : "Novo paciente fictício"} form={form} errors={errors} onChange={setForm} onOpenChange={setFormOpen} onSave={save} />
+      <PatientForm open={formOpen} title={editing ? "Editar paciente" : "Novo paciente"} form={form} errors={errors} onChange={setForm} onOpenChange={setFormOpen} onSave={save} />
 
       <Sheet open={Boolean(focused)} onOpenChange={(open) => !open && setFocusId(null)}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
@@ -194,8 +194,8 @@ export function PatientsView() {
                     <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
                   </TabsList>
                   <TabsContent value="dados" className="space-y-2 text-sm">
-                    <p>CPF demonstrativo: {focused.cpf}</p>
-                    <p>Nascimento fictício: {formatDate(focused.birthDate, "dd/MM/yyyy")}</p>
+                    <p>CPF: {focused.cpf}</p>
+                    <p>Nascimento: {formatDate(focused.birthDate, "dd/MM/yyyy")}</p>
                     <p>{focused.address}, {focused.city}</p>
                     <p className="text-muted-foreground">{focused.notes}</p>
                     <Button type="button" variant="outline" onClick={() => openEdit(focused)}>Editar cadastro</Button>

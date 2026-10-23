@@ -57,10 +57,10 @@ export function FinanceView() {
   return (
     <FadeIn className="space-y-5">
       <div>
-        <p className="section-kicker">Pagamentos simulados</p>
+        <p className="section-kicker">Financeiro</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Financeiro</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Os pagamentos do aplicativo e as mensalidades dos associados entram sozinhos. O dono também lança outras receitas e as saídas da clínica. Nenhum valor foi cobrado de verdade.
+          Acompanhe recebimentos, mensalidades de associados, receitas e saídas da clínica.
         </p>
       </div>
       <div className="flex justify-end">
@@ -111,7 +111,7 @@ export function FinanceView() {
             </SelectContent>
           </Select>
         </div>
-        {rows.length === 0 ? <EmptyState icon={Receipt} title="Nenhum lançamento" description="Os pagamentos simulados aparecem nesta tabela." /> : (
+        {rows.length === 0 ? <EmptyState icon={Receipt} title="Nenhum lançamento" description="Os pagamentos e lançamentos aparecerão nesta tabela." /> : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -135,8 +135,8 @@ export function FinanceView() {
                     <TableCell><PaymentBadge status={payment.status} /></TableCell>
                     <TableCell className="space-x-2 text-right">
                       {payment.status === "pending" ? (
-                        <Button type="button" size="sm" variant="outline" onClick={() => { settlePayment(payment.id, "pix"); toast.success("Pagamento simulado registrado.") }}>
-                          Receber Pix simulado
+                        <Button type="button" size="sm" variant="outline" onClick={() => { settlePayment(payment.id, "pix"); toast.success("Pagamento registrado.") }}>
+                          Registrar Pix
                         </Button>
                       ) : null}
                       <Button type="button" size="sm" variant="ghost" onClick={() => setReceipt(payment)}>Comprovante</Button>
@@ -171,7 +171,7 @@ function AssociateMemberships({ associates, fee }: { associates: Associate[]; fe
           <TableHeader>
             <TableRow>
               <TableHead>Associado</TableHead>
-              <TableHead>CPF fictício</TableHead>
+              <TableHead>CPF</TableHead>
               <TableHead>Situação</TableHead>
               <TableHead>Mensalidade</TableHead>
             </TableRow>
@@ -269,7 +269,7 @@ function CashEntryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Lançar receita ou saída</DialogTitle>
-          <DialogDescription>Valor fictício da demonstração. Não gera cobrança nem nota.</DialogDescription>
+          <DialogDescription>Registre uma receita ou saída administrativa da clínica.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-2">
           <button type="button" onClick={() => changeKind("income")} className={`rounded-2xl py-3 text-sm ${kind === "income" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>Receita</button>
@@ -311,10 +311,9 @@ function ReceiptDialog({ payment, onOpenChange }: { payment: Payment | null; onO
     <Dialog open={Boolean(payment)} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden sm:max-w-md">
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
-          <span className="-rotate-12 text-4xl font-semibold tracking-[0.3em] text-primary/10">DEMONSTRAÇÃO</span>
         </div>
         <DialogHeader>
-          <DialogTitle>Comprovante fictício</DialogTitle>
+          <DialogTitle>Comprovante</DialogTitle>
           <DialogDescription>Sem valor fiscal. Este documento existe só para a apresentação.</DialogDescription>
         </DialogHeader>
         {payment ? (
@@ -323,7 +322,7 @@ function ReceiptDialog({ payment, onOpenChange }: { payment: Payment | null; onO
             <Row term="Paciente" value={patient?.name ?? "—"} />
             <Row term="Profissional" value={professional?.name ?? "—"} />
             <Row term="Valor" value={formatMoney(payment.amount)} />
-            <Row term="Forma" value={payment.method === "pix" ? "Pix simulado" : "Cartão simulado"} />
+            <Row term="Forma" value={payment.method === "pix" ? "Pix" : "Cartão"} />
             <Row term="Situação" value={payment.status} />
             <Row term="Data" value={formatDate(payment.paidAt ?? payment.createdAt, "dd/MM/yyyy HH:mm")} />
           </dl>

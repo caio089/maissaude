@@ -158,14 +158,14 @@ function buildServices(professionalId: string, price: number, specialty: Special
   const services: Array<{ id: string; name: string; durationMin: number; price: number; modality: "presencial" | "teleconsulta" }> = [
     {
       id: `${professionalId}-consulta`,
-      name: "Consulta de demonstração",
+      name: "Consulta",
       durationMin: 40,
       price,
       modality: "presencial" as const,
     },
     {
       id: `${professionalId}-retorno`,
-      name: "Retorno demonstrativo",
+      name: "Retorno",
       durationMin: 40,
       price: Math.round(price * 0.6),
       modality: "presencial" as const,
@@ -174,7 +174,7 @@ function buildServices(professionalId: string, price: number, specialty: Special
   if (specialty !== "odontologia" && specialty !== "fisioterapia") {
     services.push({
       id: `${professionalId}-tele`,
-      name: "Teleconsulta demonstrativa",
+      name: "Teleconsulta",
       durationMin: 40,
       price,
       modality: "teleconsulta",
@@ -208,17 +208,17 @@ export const useDemoStore = create<DemoStore>()(
         const normalizedCpf = cpf.trim()
         const normalizedPhone = phone.trim()
         const state = get()
-        if (!/^900\.\d{3}\.\d{3}-\d{2}$/.test(normalizedCpf)) {
-          return { ok: false, message: "Use um CPF fictício começando com 900, no formato 900.000.000-00." }
+        if (!/^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(normalizedCpf)) {
+          return { ok: false, message: "Use o CPF no formato 000.000.000-00." }
         }
         if (!/^\(\d{2}\) \d{5}-\d{4}$/.test(normalizedPhone)) {
-          return { ok: false, message: "Use um WhatsApp fictício no formato (86) 99000-0000." }
+          return { ok: false, message: "Use o WhatsApp no formato (00) 00000-0000." }
         }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || birthDate > toDateKey(new Date())) {
-          return { ok: false, message: "Informe uma data de nascimento fictícia que já tenha ocorrido." }
+          return { ok: false, message: "Informe uma data de nascimento válida que já tenha ocorrido." }
         }
         if (state.mobileAccounts.some((account) => account.cpf === normalizedCpf)) {
-          return { ok: false, message: "Este CPF já tem conta nesta demonstração. Entre com a senha." }
+          return { ok: false, message: "Este CPF já tem conta. Entre com a senha." }
         }
         if (state.data.patients.some((patient) => patient.cpf === normalizedCpf)) {
           return { ok: false, message: "Este CPF já está no cadastro. A conta do aplicativo não assume ficha existente." }
@@ -233,10 +233,10 @@ export const useDemoStore = create<DemoStore>()(
           email: contact.email,
           birthDate,
           gender: "Não informado",
-          address: "Endereço fictício informado no aplicativo",
+          address: "",
           city: state.mobileCity,
           status: "active" as const,
-          notes: "Conta criada no aplicativo de demonstração.",
+          notes: "Conta criada no aplicativo.",
           createdAt: formatISO(new Date()),
           reminderEnabled: true,
         }
@@ -252,7 +252,7 @@ export const useDemoStore = create<DemoStore>()(
       loginMobileAccount: ({ cpf, passwordHash }) => {
         const account = get().mobileAccounts.find((item) => item.cpf === cpf.trim())
         if (!account || account.passwordHash !== passwordHash) {
-          return { ok: false, message: "CPF ou senha de demonstração não conferem." }
+          return { ok: false, message: "CPF ou senha não conferem." }
         }
         set((state) => ({
           mobileSessionPatientId: account.patientId,
@@ -449,7 +449,7 @@ export const useDemoStore = create<DemoStore>()(
           id,
           name: input.name.trim(),
           specialty: input.specialty,
-          credentialLabel: "Registro demonstrativo",
+          credentialLabel: "Registro profissional",
           credentialCode: input.credentialCode.trim().toUpperCase(),
           bio: input.bio.trim(),
           price: input.price,
@@ -458,9 +458,9 @@ export const useDemoStore = create<DemoStore>()(
           reviews: [
             {
               id: `${id}-review-1`,
-              author: "Paciente de demonstração",
+              author: "Paciente",
               rating: 5,
-              comment: "Avaliação fictícia gerada ao cadastrar o profissional nesta demonstração.",
+              comment: "Avaliação registrada no cadastro do profissional.",
               date: toDateKey(new Date()),
               demonstrative: true as const,
             },
@@ -534,7 +534,7 @@ export const useDemoStore = create<DemoStore>()(
                 endsAt: formatISO(endsAt),
                 status: "scheduled",
                 modality: service.modality,
-                notes: input.notes.trim() || "Agendamento criado no painel de demonstração.",
+                notes: input.notes.trim(),
                 createdAt: formatISO(new Date()),
                 origin: "desktop",
                 paymentId,
@@ -641,7 +641,7 @@ export const useDemoStore = create<DemoStore>()(
                 professionalId: input.professionalId,
                 startsAt: formatISO(startsAt),
                 endsAt: formatISO(endsAt),
-                reason: input.reason.trim() || "Bloqueio demonstrativo",
+                reason: input.reason.trim() || "Horário indisponível",
                 origin: "desktop",
               },
             ],
@@ -723,7 +723,7 @@ export const useDemoStore = create<DemoStore>()(
               ],
             },
           }))
-          return { ok: false, message: "Pagamento de demonstração recusado. O horário continua disponível." }
+          return { ok: false, message: "Pagamento recusado. O horário continua disponível." }
         }
         const conflict = findConflict(professional.id, startsAt, endsAt, data.appointments, data.blockedSlots)
         if (conflict) return { ok: false, message: "Esse horário já foi reservado. Volte e escolha outro." }
@@ -753,7 +753,7 @@ export const useDemoStore = create<DemoStore>()(
                 endsAt: formatISO(endsAt),
                 status: "confirmed",
                 modality: service.modality,
-                notes: "Consulta confirmada pelo aplicativo de demonstração do paciente.",
+                notes: "Consulta confirmada pelo aplicativo do paciente.",
                 createdAt: formatISO(new Date()),
                 origin: "mobile",
                 paymentId,
@@ -873,7 +873,7 @@ export const useDemoStore = create<DemoStore>()(
               ],
             },
           }))
-          return { ok: false, message: "Pagamento de demonstração recusado. O carrinho continua disponível." }
+          return { ok: false, message: "Pagamento recusado. O carrinho continua disponível." }
         }
         const createdAt = formatISO(new Date())
         const appointments = prepared.map((item) => ({
@@ -885,7 +885,7 @@ export const useDemoStore = create<DemoStore>()(
           endsAt: formatISO(item.endsAt),
           status: "confirmed" as const,
           modality: item.service.modality,
-          notes: "Item confirmado pelo aplicativo de demonstração do paciente.",
+          notes: "Item confirmado pelo aplicativo do paciente.",
           createdAt,
           origin: "mobile" as const,
         }))
@@ -1068,7 +1068,7 @@ function roundMoney(value: number) {
 function associateConflict(associates: Associate[], input: AssociateInput, ignoreId?: string) {
   const cpf = input.cpf.trim()
   if (associates.some((associate) => associate.id !== ignoreId && associate.cpf === cpf)) {
-    return "Este CPF fictício já está cadastrado como associado."
+    return "Este CPF já está cadastrado como associado."
   }
   return null
 }

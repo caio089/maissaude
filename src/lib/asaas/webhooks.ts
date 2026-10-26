@@ -7,6 +7,9 @@ import type { AsaasPayment, AsaasSubscription, AsaasWebhookPayload } from "@/lib
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 
 const EVENT_PATTERN = /^[A-Z][A-Z0-9_]{2,79}$/
+// Production event IDs include an ampersand before the delivery suffix,
+// for example: evt_<hash>&<number>.
+const EVENT_ID_PATTERN = /^[A-Za-z0-9_&-]{8,96}$/
 const RESOURCE_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/
 
 const PAID_STATUSES = new Set(["CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH", "ANTICIPATED"])
@@ -25,7 +28,7 @@ export function webhookTokenMatches(headerValue: string | null) {
 export async function persistAsaasWebhook(payload: AsaasWebhookPayload) {
   const eventId = payload.id?.trim()
   const event = payload.event?.trim()
-  if (!eventId || !RESOURCE_ID_PATTERN.test(eventId) || !event || !EVENT_PATTERN.test(event)) {
+  if (!eventId || !EVENT_ID_PATTERN.test(eventId) || !event || !EVENT_PATTERN.test(event)) {
     throw new Error("Evento da Asaas sem id ou tipo válido.")
   }
 

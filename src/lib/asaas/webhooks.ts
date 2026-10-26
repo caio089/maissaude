@@ -118,15 +118,27 @@ async function applyWebhookSideEffects(payload: AsaasWebhookPayload) {
   const localStatus = mapPaymentStatus(payment.status, payload.event)
   if (!localStatus) return
 
-  await admin
+  const update = {
+    status: localStatus,
+    asaas_status: payment.status,
+    invoice_url: payment.invoiceUrl || null,
+    paid_at: localStatus === "paid" ? new Date().toISOString() : null,
+  }
+  const { data: linkedPayments, error: paymentUpdateError } = await admin
     .from("payments")
-    .update({
-      status: localStatus,
-      asaas_status: payment.status,
-      invoice_url: payment.invoiceUrl || null,
-      paid_at: localStatus === "paid" ? new Date().toISOString() : null,
-    })
+    .update(update)
     .eq("asaas_payment_id", payment.id)
+    .select("id")
+  if (paymentUpdateError) throw new Error("Não foi possível atualizar o pagamento confirmado.")
+  // The webhook can arrive before charge creation has linked the Asaas ID.
+  // Only use the unique reference from the payment fetched directly from Asaas.
+  if (!linkedPayments?.length && payment.externalReference) {
+    const { error: referenceError } = await admin.from("payments")
+      .update({ ...update, asaas_payment_id: payment.id })
+      .eq("reference", payment.externalReference)
+      .is("asaas_payment_id", null)
+    if (referenceError) throw new Error("Não foi possível vincular o pagamento confirmado.")
+  }
 
   if (payment.subscription && localStatus === "paid") {
     const { data: subscription } = await admin

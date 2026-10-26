@@ -27,7 +27,10 @@ export function ConsultationsView() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [query, setQuery] = useState("")
-  const [patientId, setPatientId] = useState("")
+  const [selectedPatient, setSelectedPatient] = useState<PatientItem | null>(null)
+  const [patientResults, setPatientResults] = useState<PatientItem[]>([])
+  const [searchingPatients, setSearchingPatients] = useState(false)
+  const [patientSearchError, setPatientSearchError] = useState("")
   const [professionalId, setProfessionalId] = useState("")
   const [serviceId, setServiceId] = useState("")
   const [date, setDate] = useState("")
@@ -61,6 +64,25 @@ export function ConsultationsView() {
     return () => { active = false }
   }, [])
 
+  useEffect(() => {
+    if (!query.trim() || selectedPatient) return
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      fetch(`/api/desktop/patients/search?q=${encodeURIComponent(query.trim())}`, { cache: "no-store", signal: controller.signal })
+        .then(async (response) => {
+          const result = await response.json() as { patients?: PatientItem[]; error?: string }
+          if (!response.ok) throw new Error(result.error || "Não foi possível buscar pacientes.")
+          if (!controller.signal.aborted) { setPatientResults(result.patients || []); setSearchingPatients(false) }
+        })
+        .catch((err: unknown) => {
+          if (controller.signal.aborted) return
+          setPatientSearchError(err instanceof Error ? err.message : "Não foi possível buscar pacientes.")
+          setSearchingPatients(false)
+        })
+    }, 250)
+    return () => { window.clearTimeout(timer); controller.abort() }
+  }, [query, selectedPatient])
+
   const patients = useMemo(() => {
     const records = new Map<string, PatientItem>()
     for (const patient of local.patients.filter((item) => item.status === "active")) records.set(cpfDigits(patient.cpf), { ...patient, snapshot: patient })
@@ -74,10 +96,9 @@ export function ConsultationsView() {
     return [...records.values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
   }, [local.professionals, data.professionals])
   const professional = professionals.find((item) => item.id === professionalId)
-  const patient = patients.find((item) => item.id === patientId)
+  const patient = selectedPatient
   const services = professional?.snapshot ? professional.snapshot.services.map((service) => ({ id: service.id, professional_id: professional.id, name: service.name, price: service.price, duration_min: service.durationMin, modality: service.modality })) : data.services.filter((service) => service.professional_id === professionalId)
   const service = services.find((item) => item.id === serviceId)
-  const visiblePatients = patients.filter((item) => `${item.name} ${item.cpf} ${item.phone}`.toLowerCase().includes(query.toLowerCase().trim()))
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -112,8 +133,26 @@ export function ConsultationsView() {
       <form onSubmit={(event) => void submit(event)} className="space-y-4 rounded-2xl border bg-card p-5">
         <h2 className="text-lg font-semibold">Nova consulta</h2>
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-1 text-sm">Buscar paciente<Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nome, CPF ou telefone" /></label>
-          <label className="space-y-1 text-sm">Paciente<select className={selectClass} value={patientId} onChange={(event) => setPatientId(event.target.value)} required><option value="">Selecione</option>{visiblePatients.map((item) => <option key={item.id} value={item.id}>{item.name} · {formatCpf(item.cpf)}</option>)}</select></label>
+          <div className="space-y-1 text-sm md:col-span-2">
+            <label htmlFor="consultation-patient">Buscar paciente</label>
+            <Input id="consultation-patient" value={query} autoComplete="off" placeholder="Nome, CPF, telefone ou e-mail" onChange={(event) => {
+              const value = event.target.value
+              setQuery(value)
+              setSelectedPatient(null)
+              setPatientResults([])
+              setPatientSearchError("")
+              setSearchingPatients(Boolean(value.trim()))
+            }} />
+            {selectedPatient ? <p className="text-muted-foreground">Paciente selecionado: {selectedPatient.name} · CPF {formatCpf(selectedPatient.cpf)}</p> : query.trim() ? (
+              <div className="max-h-48 overflow-y-auto rounded-md border" aria-live="polite">
+                {searchingPatients ? <p className="p-3 text-muted-foreground">Buscando pacientes...</p> : patientSearchError ? <p role="alert" className="p-3 text-destructive">{patientSearchError}</p> : patientResults.length ? patientResults.map((item) => (
+                  <button key={item.id} type="button" className="block w-full border-b p-3 text-left last:border-0 hover:bg-accent focus-visible:bg-accent" onClick={() => { setSelectedPatient(item); setQuery(item.name); setPatientResults([]) }}>
+                    <span className="block font-medium">{item.name}</span><span className="text-muted-foreground">CPF {formatCpf(item.cpf)} · {item.phone}</span>
+                  </button>
+                )) : <p className="p-3 text-muted-foreground">Nenhum paciente ativo encontrado no banco.</p>}
+              </div>
+            ) : <p className="text-muted-foreground">Digite para buscar pacientes ativos cadastrados no banco.</p>}
+          </div>
           <label className="space-y-1 text-sm">Médico ou profissional<select className={selectClass} value={professionalId} onChange={(event) => { setProfessionalId(event.target.value); setServiceId("") }} required><option value="">Selecione</option>{professionals.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label className="space-y-1 text-sm">Procedimento<select className={selectClass} value={serviceId} onChange={(event) => setServiceId(event.target.value)} required><option value="">Selecione</option>{services.map((item) => <option key={item.id} value={item.id}>{item.name} · {formatMoney(Number(item.price))} · {item.duration_min} min</option>)}</select></label>
           <label className="space-y-1 text-sm">Data<Input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label>

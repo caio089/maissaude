@@ -45,6 +45,7 @@ const NAV = [
   { href: "/desktop", label: "Painel", icon: LayoutDashboard },
   { href: "/desktop/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/desktop/consultas", label: "Consultas", icon: ClipboardList },
+  { href: "/desktop/atendimentos", label: "Consultas e procedimentos", icon: Stethoscope },
   { href: "/desktop/pacientes", label: "Pacientes", icon: Users },
   { href: "/desktop/associados", label: "Associados", icon: IdCard },
   { href: "/desktop/financeiro", label: "Financeiro", icon: Wallet },

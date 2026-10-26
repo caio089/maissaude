@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Star } from "lucide-react"
 import { toast } from "sonner"
@@ -13,9 +13,10 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { ServiceFields } from "@/components/desktop/service-fields"
 import { formatMoney, WEEKDAY_SHORT } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
-import { SPECIALTIES, SPECIALTY_LABEL, type Professional, type ProfessionalInput, type Specialty } from "@/lib/types"
+import { SPECIALTIES, SPECIALTY_LABEL, type Professional, type ProfessionalInput, type Service, type Specialty } from "@/lib/types"
 import { hasErrors, validateProfessionalInput } from "@/lib/validation"
 
 const blank = (): ProfessionalInput => ({
@@ -32,27 +33,58 @@ const blank = (): ProfessionalInput => ({
 
 export function ProfessionalsView() {
   const router = useRouter()
-  const professionals = useDemoStore((state) => state.data.professionals)
-  const createProfessional = useDemoStore((state) => state.createProfessional)
-  const updateProfessional = useDemoStore((state) => state.updateProfessional)
+  const localProfessionals = useDemoStore((state) => state.data.professionals)
+  const [serverProfessionals, setServerProfessionals] = useState<Professional[]>([])
+  const [loadError, setLoadError] = useState("")
+  const [saving, setSaving] = useState(false)
+  const professionals = useMemo(() => {
+    const items = new Map(localProfessionals.map((professional) => [professional.id, professional]))
+    for (const professional of serverProfessionals) items.set(professional.id, professional)
+    return [...items.values()]
+  }, [localProfessionals, serverProfessionals])
   const setAgendaProfessionalId = useDemoStore((state) => state.setAgendaProfessionalId)
   const setAgendaView = useDemoStore((state) => state.setAgendaView)
   const [selectedId, setSelectedId] = useState(professionals[0]?.id ?? "")
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Professional | null>(null)
+  const [draftId, setDraftId] = useState("")
   const [form, setForm] = useState<ProfessionalInput>(blank())
+  const [services, setServices] = useState<Service[]>([])
   const [errors, setErrors] = useState<ReturnType<typeof validateProfessionalInput>>({})
   const selected = professionals.find((item) => item.id === selectedId) ?? professionals[0]
 
+  async function refresh() {
+    const response = await fetch("/api/desktop/professionals", { cache: "no-store" })
+    const result = await response.json() as { professionals?: Professional[]; error?: string }
+    if (!response.ok) throw new Error(result.error || "Não foi possível carregar os profissionais.")
+    setServerProfessionals(result.professionals || [])
+    setLoadError("")
+  }
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch("/api/desktop/professionals", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const result = await response.json() as { professionals?: Professional[]; error?: string }
+        if (!response.ok) throw new Error(result.error || "Não foi possível carregar os profissionais.")
+        if (!controller.signal.aborted) setServerProfessionals(result.professionals || [])
+      })
+      .catch((error: unknown) => { if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : "Não foi possível carregar os profissionais.") })
+    return () => controller.abort()
+  }, [])
+
   function openCreate() {
     setEditing(null)
+    setDraftId(`pro-${crypto.randomUUID()}`)
     setForm(blank())
+    setServices([])
     setErrors({})
     setOpen(true)
   }
 
   function openEdit(professional: Professional) {
     setEditing(professional)
+    setDraftId(professional.id)
     setForm({
       name: professional.name,
       specialty: professional.specialty,
@@ -64,23 +96,31 @@ export function ProfessionalsView() {
       endHour: professional.endHour,
       active: professional.active,
     })
+    setServices(professional.services.map((service) => ({ ...service, kind: service.kind || "consulta" })))
     setErrors({})
     setOpen(true)
   }
 
-  function save() {
+  async function save() {
     const nextErrors = validateProfessionalInput(form)
     setErrors(nextErrors)
     if (hasErrors(nextErrors)) return
-    if (editing) {
-      updateProfessional(editing.id, form)
-      toast.success("Profissional atualizado.")
-    } else {
-      const id = createProfessional(form)
-      setSelectedId(id)
-      toast.success("Profissional adicionado.")
+    if (services.some((service) => !service.name.trim() || service.price <= 0 || !Number.isInteger(service.durationMin) || service.durationMin <= 0)) {
+      toast.error("Confira o nome, valor e duração de cada atendimento.")
+      return
     }
-    setOpen(false)
+    setSaving(true)
+    try {
+      const response = await fetch("/api/desktop/professionals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: draftId, form, services }) })
+      const result = await response.json() as { id?: string; error?: string }
+      if (!response.ok || !result.id) throw new Error(result.error || "Não foi possível salvar o profissional.")
+      setSelectedId(result.id)
+      setOpen(false)
+      try { await refresh() } catch { toast.warning("Profissional salvo. Atualize a página para conferir os dados.") }
+      toast.success("Profissional e atendimentos salvos no banco.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar o profissional.")
+    } finally { setSaving(false) }
   }
 
   return (
@@ -93,6 +133,7 @@ export function ProfessionalsView() {
         </div>
         <Button type="button" onClick={openCreate}><Plus /> Novo profissional</Button>
       </div>
+      {loadError ? <p role="alert" className="text-sm text-destructive">{loadError}</p> : null}
       <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <div className="panel max-h-[72dvh] overflow-y-auto p-2">
           {professionals.length === 0 ? <p className="px-3 py-4 text-sm text-muted-foreground">Nenhum profissional cadastrado.</p> : professionals.map((professional) => (
@@ -135,7 +176,7 @@ export function ProfessionalsView() {
               {selected.services.map((service) => (
                 <div key={service.id} className="rounded-2xl bg-muted/70 p-4">
                   <p className="text-sm font-medium">{service.name}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{service.durationMin} min · {service.modality === "teleconsulta" ? "teleconsulta" : "presencial"}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{service.kind === "cirurgia" ? "Cirurgia" : service.kind === "exame" ? "Procedimento ou exame" : "Consulta"} · {service.durationMin} min · {service.modality === "teleconsulta" ? "teleconsulta" : "presencial"}</p>
                   <p className="mt-2 font-medium">{formatMoney(service.price)}</p>
                 </div>
               ))}
@@ -221,9 +262,10 @@ export function ProfessionalsView() {
             <Field label="Descrição" htmlFor="pro-bio" error={errors.bio}>
               <Textarea id="pro-bio" value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} />
             </Field>
+            <ServiceFields services={services} onChange={setServices} savedIds={editing?.services.map((service) => service.id)} />
           </div>
           <DialogFooter>
-            <Button type="button" onClick={save}>Salvar</Button>
+            <Button type="button" disabled={saving} onClick={() => void save()}>{saving ? "Salvando..." : "Salvar"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

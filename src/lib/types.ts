@@ -44,6 +44,7 @@ export interface Service {
   durationMin: number
   price: number
   modality: Modality
+  kind?: CatalogKind
 }
 
 export interface Review {

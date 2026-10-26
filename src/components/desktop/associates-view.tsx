@@ -15,11 +15,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatDate, formatMoney } from "@/lib/format"
 import { cpfDigits, formatCpf } from "@/lib/cpf"
 import { useDemoStore } from "@/lib/store"
-import type { Associate, AssociateInput, PatientStatus } from "@/lib/types"
+import type { Associate, AssociateInput, Patient, PatientStatus } from "@/lib/types"
 import { hasErrors, validateAssociateInput, type FieldErrors } from "@/lib/validation"
 
 export function AssociatesView() {
   const associates = useDemoStore((state) => state.associates)
+  const localPatients = useDemoStore((state) => state.data.patients)
   const rules = useDemoStore((state) => state.associateRules)
   const createAssociate = useDemoStore((state) => state.createAssociate)
   const updateAssociate = useDemoStore((state) => state.updateAssociate)
@@ -30,6 +31,22 @@ export function AssociatesView() {
   const [errors, setErrors] = useState<FieldErrors<keyof AssociateInput>>({})
   const [payment, setPayment] = useState<{ value: number; payload: string | null; encodedImage: string | null; invoiceUrl: string | null } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [source, setSource] = useState<"new" | "patient">("new")
+  const [patientQuery, setPatientQuery] = useState("")
+  const [selectedPatient, setSelectedPatient] = useState<PatientChoice | null>(null)
+  const [serverPatients, setServerPatients] = useState<PatientChoice[]>([])
+  const [loadingPatients, setLoadingPatients] = useState(false)
+
+  const patientChoices = useMemo(() => {
+    const all = new Map<string, PatientChoice>()
+    for (const patient of localPatients.filter((item) => item.status === "active")) {
+      all.set(cpfDigits(patient.cpf), { ...patient, snapshot: patient })
+    }
+    for (const patient of serverPatients) all.set(cpfDigits(patient.cpf), patient)
+    const term = patientQuery.trim().toLowerCase()
+    return [...all.values()].filter((patient) => !term || [patient.name, patient.cpf, patient.phone, patient.email].some((value) => value.toLowerCase().includes(term)))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+  }, [localPatients, serverPatients, patientQuery])
 
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase()
@@ -43,7 +60,35 @@ export function AssociatesView() {
     setEditing(null)
     setForm(emptyAssociateForm())
     setErrors({})
+    setSource("new")
+    setSelectedPatient(null)
+    setPatientQuery("")
     setFormOpen(true)
+  }
+
+  async function choosePatientSource() {
+    setSource("patient")
+    setSelectedPatient(null)
+    setForm(emptyAssociateForm())
+    setErrors({})
+    setLoadingPatients(true)
+    try {
+      const response = await fetch("/api/payments/associate", { cache: "no-store" })
+      if (!response.ok) throw new Error()
+      const body = await response.json() as { patients: PatientChoice[] }
+      setServerPatients(body.patients)
+    } catch {
+      setServerPatients([])
+      toast.error("Não foi possível buscar pacientes do banco. Os pacientes deste navegador continuam disponíveis.")
+    } finally {
+      setLoadingPatients(false)
+    }
+  }
+
+  function selectPatient(patient: PatientChoice) {
+    setSelectedPatient(patient)
+    setForm({ name: patient.name, cpf: formatCpf(patient.cpf), phone: patient.phone, email: patient.email, status: "inactive" })
+    setErrors({})
   }
 
   function openEdit(associate: Associate) {
@@ -60,6 +105,10 @@ export function AssociatesView() {
   }
 
   async function save() {
+    if (!editing && source === "patient" && !selectedPatient) {
+      toast.error("Selecione um paciente ativo.")
+      return
+    }
     const normalizedForm = { ...form, cpf: cpfDigits(form.cpf), phone: form.phone.trim(), email: form.email.trim().toLowerCase() }
     const nextErrors = validateAssociateInput(normalizedForm)
     const others = associates.filter((associate) => associate.id !== editing?.id)
@@ -74,17 +123,16 @@ export function AssociatesView() {
         const response = await fetch("/api/payments/associate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(normalizedForm),
+          body: JSON.stringify({ ...normalizedForm, patientId: selectedPatient?.id, patient: selectedPatient?.snapshot }),
         })
-        const body = await response.json() as { error?: string; value?: number; pix?: { payload?: string | null; encodedImage?: string | null } | null; invoiceUrl?: string | null }
-        if (!response.ok || !body.value) {
+        const body = await response.json() as { error?: string; associateId?: string; value?: number; pix?: { payload?: string | null; encodedImage?: string | null } | null; invoiceUrl?: string | null }
+        if (!response.ok || !body.value || !body.associateId) {
           toast.error(body.error || "Não foi possível gerar o Pix.")
           return
         }
-        const result = createAssociate({ ...normalizedForm, status: "inactive" })
+        const result = createAssociate({ ...normalizedForm, status: "inactive" }, body.associateId)
         if (!result.ok) {
-          toast.error(result.message)
-          return
+          toast.warning("Cobrança criada, mas a lista local não foi atualizada. Confira o cadastro antes de tentar novamente.")
         }
         setPayment({
           value: body.value,
@@ -94,6 +142,9 @@ export function AssociatesView() {
         })
         setFormOpen(false)
         toast.success("Cadastro criado e Pix gerado. A associação será ativada após a confirmação.")
+        return
+      } catch {
+        toast.error("Não foi possível confirmar a criação da cobrança. Confira no Asaas antes de tentar novamente.")
         return
       } finally {
         setSaving(false)
@@ -175,17 +226,38 @@ export function AssociatesView() {
         )}
       </div>
 
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+      <Dialog open={formOpen} onOpenChange={(open) => { if (!saving) setFormOpen(open) }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? "Editar associado" : "Novo associado"}</DialogTitle>
           </DialogHeader>
+          {!editing ? (
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Button type="button" variant={source === "new" ? "default" : "outline"} onClick={() => { setSource("new"); setSelectedPatient(null); setForm(emptyAssociateForm()); setErrors({}) }}>Novo cadastro</Button>
+                <Button type="button" variant={source === "patient" ? "default" : "outline"} onClick={() => void choosePatientSource()}>Buscar paciente ativo</Button>
+              </div>
+              {source === "patient" ? (
+                <div className="space-y-2">
+                  <Input aria-label="Buscar paciente ativo" placeholder="Nome, CPF, telefone ou e-mail" value={patientQuery} onChange={(event) => setPatientQuery(event.target.value)} />
+                  {selectedPatient ? <p className="text-sm">Paciente selecionado: <strong>{selectedPatient.name}</strong></p> : null}
+                  <div className="max-h-36 overflow-y-auto rounded-md border">
+                    {loadingPatients ? <p className="p-3 text-sm text-muted-foreground">Buscando pacientes...</p> : patientChoices.length ? patientChoices.map((patient) => (
+                      <button key={patient.id} type="button" className="block w-full border-b p-2 text-left text-sm last:border-0 hover:bg-accent" onClick={() => selectPatient(patient)}>
+                        <span className="block font-medium">{patient.name}</span><span className="text-muted-foreground">CPF {formatCpf(patient.cpf)} · {patient.phone}</span>
+                      </button>
+                    )) : <p className="p-3 text-sm text-muted-foreground">Nenhum paciente ativo encontrado.</p>}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Nome" htmlFor="associate-name" error={errors.name}>
               <Input id="associate-name" className="h-10" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
             </Field>
             <Field label="CPF" htmlFor="associate-cpf" error={errors.cpf}>
-              <Input id="associate-cpf" className="h-10" inputMode="numeric" placeholder="Somente números" value={form.cpf} onChange={(event) => setForm({ ...form, cpf: formatCpf(event.target.value) })} />
+              <Input id="associate-cpf" className="h-10" inputMode="numeric" placeholder="Somente números" value={form.cpf} disabled={!editing && source === "patient" && Boolean(selectedPatient)} onChange={(event) => setForm({ ...form, cpf: formatCpf(event.target.value) })} />
             </Field>
             <Field label="Telefone" htmlFor="associate-phone" error={errors.phone}>
               <Input id="associate-phone" className="h-10" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
@@ -205,7 +277,7 @@ export function AssociatesView() {
             <p className="self-end text-sm text-muted-foreground">Mensalidade de {formatMoney(rules.fee)}. Novos associados ficam pendentes até o Pix ser pago.</p>
           </div>
           <DialogFooter>
-            <Button type="button" disabled={saving} onClick={() => void save()}>{saving ? "Gerando Pix..." : editing ? "Salvar" : "Cadastrar e gerar Pix"}</Button>
+            <Button type="button" disabled={saving || (!editing && source === "patient" && !selectedPatient)} onClick={() => void save()}>{saving ? "Gerando Pix..." : editing ? "Salvar" : "Cadastrar e gerar Pix"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -226,6 +298,8 @@ export function AssociatesView() {
     </FadeIn>
   )
 }
+
+type PatientChoice = Pick<Patient, "id" | "name" | "cpf" | "phone" | "email" | "status"> & { snapshot?: Patient }
 
 function emptyAssociateForm(): AssociateInput {
   return {

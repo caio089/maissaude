@@ -79,7 +79,7 @@ export interface DemoStore {
   markNotificationsRead: () => void
   createPatient: (input: PatientInput) => string
   updatePatient: (id: string, input: PatientInput) => void
-  createAssociate: (input: AssociateInput) => { ok: true; id: string } | { ok: false; message: string }
+  createAssociate: (input: AssociateInput, id?: string) => { ok: true; id: string } | { ok: false; message: string }
   updateAssociate: (id: string, input: AssociateInput) => { ok: true } | { ok: false; message: string }
   subscribeCurrentPatient: () => { ok: true } | { ok: false; message: string }
   updateAssociateRules: (rules: AssociateRules) => { ok: true } | { ok: false; message: string }
@@ -294,13 +294,13 @@ export const useDemoStore = create<DemoStore>()(
             readNotificationIds: ["notif-upcoming", "notif-pending", "notif-noshow", `notif-today-${toDateKey(new Date())}`],
           },
         })),
-      createAssociate: (input) => {
+      createAssociate: (input, serverId) => {
         if (!onClinicSurface()) return { ok: false, message: "Só a clínica altera associados neste painel." }
         const invalid = firstError(validateAssociateInput(input))
         if (invalid) return { ok: false, message: invalid }
         const conflict = associateConflict(get().associates, input)
         if (conflict) return { ok: false, message: conflict }
-        const id = createId("ass")
+        const id = serverId || createId("ass")
         const associate: Associate = {
           id,
           name: input.name.trim(),

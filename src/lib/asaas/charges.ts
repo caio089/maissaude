@@ -4,7 +4,7 @@ import { asaasFetch } from "@/lib/asaas/client"
 import { asaasEnvironment } from "@/lib/asaas/config"
 import { ensureAsaasCustomer, type EnsureAsaasCustomerInput } from "@/lib/asaas/customers"
 import { asaasBillingType, moneyValue, saoPauloDate } from "@/lib/asaas/format"
-import type { AsaasBillingType, AsaasPayment, AsaasPixQrCode } from "@/lib/asaas/types"
+import type { AsaasBillingType, AsaasPayment, AsaasPaymentList, AsaasPixQrCode } from "@/lib/asaas/types"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 
 export type CreateAsaasChargeInput = EnsureAsaasCustomerInput & {
@@ -23,31 +23,63 @@ export async function createAsaasCharge(input: CreateAsaasChargeInput) {
 
   const customer = await ensureAsaasCustomer(input)
   // CREDIT_CARD sem dados do cartão gera a Fatura (invoiceUrl). Não capturamos cartão.
-  const payment = await asaasFetch<AsaasPayment>("/payments", {
-    method: "POST",
-    body: JSON.stringify({
-      customer: customer.id,
-      billingType: input.billingType,
-      value: moneyValue(input.value),
-      dueDate: input.dueDate || saoPauloDate(),
-      description: (input.description || "Cobrança CuidarSaude").slice(0, 500),
-      externalReference: input.externalReference || input.paymentId || input.patientId,
-    }),
-  })
+  const externalReference = input.externalReference || input.paymentId || input.patientId
+  let payment: AsaasPayment
+  try {
+    payment = await asaasFetch<AsaasPayment>("/payments", {
+      method: "POST",
+      body: JSON.stringify({
+        customer: customer.id,
+        billingType: input.billingType,
+        value: moneyValue(input.value),
+        dueDate: input.dueDate || saoPauloDate(),
+        description: (input.description || "Cobrança CuidarSaude").slice(0, 500),
+        externalReference,
+      }),
+    })
+  } catch (error) {
+    // A gateway may time out after Asaas accepted the request. Reconcile once
+    // using our unique reference before exposing an error that could prompt a retry.
+    const recovered = await findPaymentByReference(externalReference)
+    if (!recovered) throw error
+    payment = recovered
+  }
 
-  const pix =
-    input.billingType === "PIX" && payment.id
-      ? await asaasFetch<AsaasPixQrCode>(`/payments/${payment.id}/pixQrCode`)
-      : null
-
+  // A cobrança já existe na Asaas neste ponto. Registre e vincule-a antes de
+  // buscar o QR Pix: uma instabilidade nessa consulta não pode induzir uma
+  // nova tentativa e criar cobranças ou consultas duplicadas.
   await persistCharge(payment, {
     customerId: customer.id,
     patientId: input.patientId,
     paymentId: input.paymentId,
-    pixPayload: pix?.payload,
   })
 
-  return { customer, payment, pix }
+  if (input.billingType !== "PIX" || !payment.id) return { customer, payment, pix: null, pixUnavailable: false }
+
+  try {
+    const pix = await asaasFetch<AsaasPixQrCode>(`/payments/${payment.id}/pixQrCode`)
+    await persistCharge(payment, {
+      customerId: customer.id,
+      patientId: input.patientId,
+      paymentId: input.paymentId,
+      pixPayload: pix.payload,
+    })
+    return { customer, payment, pix, pixUnavailable: false }
+  } catch {
+    // The payment and its local link were successfully persisted. The user can
+    // still use invoiceUrl or find the charge in Asaas while its QR is retried.
+    return { customer, payment, pix: null, pixUnavailable: true }
+  }
+}
+
+async function findPaymentByReference(externalReference?: string) {
+  if (!externalReference) return null
+  try {
+    const list = await asaasFetch<AsaasPaymentList>(`/payments?externalReference=${encodeURIComponent(externalReference)}&limit=1`)
+    return list.data?.find((payment) => payment.id && !payment.deleted) || null
+  } catch {
+    return null
+  }
 }
 
 async function persistCharge(

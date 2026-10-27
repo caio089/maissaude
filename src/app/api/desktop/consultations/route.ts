@@ -103,7 +103,7 @@ export async function POST(request: Request) {
       if (linkedError || linkedPayment?.asaas_payment_id !== result.payment.id) {
         return NextResponse.json({ error: "Cobrança criada no Asaas, mas não foi possível confirmar seu vínculo. Consulte o Asaas antes de tentar novamente." }, { status: 502 })
       }
-      return NextResponse.json({ appointmentId, paymentId, amount, invoiceUrl: result.payment.invoiceUrl || null, pix: result.pix ? { payload: result.pix.payload || null, encodedImage: result.pix.encodedImage || null } : null })
+      return NextResponse.json({ appointmentId, paymentId, amount, invoiceUrl: result.payment.invoiceUrl || null, pix: result.pix ? { payload: result.pix.payload || null, encodedImage: result.pix.encodedImage || null } : null, pixUnavailable: result.pixUnavailable })
     } catch {
       return NextResponse.json({ error: "Consulta registrada, mas não foi possível confirmar a cobrança. Confira no Asaas antes de tentar novamente para evitar duplicidade." }, { status: 502 })
     }

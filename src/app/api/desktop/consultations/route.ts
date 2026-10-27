@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { AsaasRequestError } from "@/lib/asaas/client"
 import { createAsaasCharge } from "@/lib/asaas/charges"
 import { hasClinicSession } from "@/lib/clinic-session"
 import { cpfDigits, formatCpf } from "@/lib/cpf"
@@ -104,8 +105,30 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Cobrança criada no Asaas, mas não foi possível confirmar seu vínculo. Consulte o Asaas antes de tentar novamente." }, { status: 502 })
       }
       return NextResponse.json({ appointmentId, paymentId, amount, invoiceUrl: result.payment.invoiceUrl || null, pix: result.pix ? { payload: result.pix.payload || null, encodedImage: result.pix.encodedImage || null } : null, pixUnavailable: result.pixUnavailable })
-    } catch {
-      return NextResponse.json({ error: "Consulta registrada, mas não foi possível confirmar a cobrança. Confira no Asaas antes de tentar novamente para evitar duplicidade." }, { status: 502 })
+    } catch (error) {
+      console.error("Asaas charge creation failed", {
+        appointmentId,
+        paymentId,
+        reference,
+        error: error instanceof Error ? error.message : "unknown_error",
+        code: error instanceof AsaasRequestError ? error.code : undefined,
+        status: error instanceof AsaasRequestError ? error.status : undefined,
+      })
+
+      if (error instanceof AsaasRequestError && error.status >= 400 && error.status < 500) {
+        await db.from("appointments").update({ payment_id: null }).eq("id", appointmentId)
+        await db.from("payments").delete().eq("id", paymentId)
+        await db.from("appointments").delete().eq("id", appointmentId)
+        return NextResponse.json(
+          { error: `A Asaas recusou a cobrança: ${error.message}` },
+          { status: 422 },
+        )
+      }
+
+      const detail = error instanceof AsaasRequestError
+        ? ` A Asaas respondeu ${error.status}: ${error.message}`
+        : ""
+      return NextResponse.json({ error: `Consulta registrada, mas a cobrança não foi criada.${detail} Confira no Asaas antes de tentar novamente.` }, { status: 502 })
     }
   } catch {
     return NextResponse.json({ error: "Não foi possível concluir o agendamento. Confira os dados e a agenda." }, { status: 422 })

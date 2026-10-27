@@ -75,6 +75,7 @@ export interface DemoStore {
   loginMobileAccount: (input: { cpf: string; passwordHash: string }) => { ok: true } | { ok: false; message: string }
   logoutMobileAccount: () => void
   adoptPatientSession: (patient: Patient) => void
+  replaceProfessionals: (professionals: Professional[]) => void
   clearCheckout: () => void
   markNotificationsRead: () => void
   createPatient: (input: PatientInput) => string
@@ -286,6 +287,8 @@ export const useDemoStore = create<DemoStore>()(
             },
           }
         }),
+      replaceProfessionals: (professionals) =>
+        set((state) => ({ data: { ...state.data, professionals } })),
       clearCheckout: () => set({ lastCheckout: null, booking: emptyBooking() }),
       markNotificationsRead: () =>
         set((state) => ({

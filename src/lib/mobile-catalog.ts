@@ -10,22 +10,26 @@ export interface CatalogOffer {
 }
 
 export function consultationOffers(professionals: Professional[]): CatalogOffer[] {
-  return professionals.filter((item) => item.active).map((professional) => {
-    const service = professional.services.find((item) => item.name.startsWith("Consulta")) ?? professional.services[0]
-    return {
-      kind: "consulta" as const,
-      serviceId: service?.id ?? `${professional.id}-consulta`,
-      serviceName: service?.name ?? "Consulta",
-      professionalId: professional.id,
-      price: service?.price ?? professional.price,
-      durationMin: service?.durationMin ?? 40,
-    }
-  })
+  return serviceOffers("consulta", professionals)
 }
 
 export function offersFor(kind: CatalogKind, professionals: Professional[]) {
-  if (kind === "consulta") return consultationOffers(professionals)
-  return []
+  return serviceOffers(kind, professionals)
+}
+
+function serviceOffers(kind: CatalogKind, professionals: Professional[]): CatalogOffer[] {
+  return professionals.filter((item) => item.active).flatMap((professional) =>
+    professional.services
+      .filter((service) => (service.kind ?? "consulta") === kind)
+      .map((service) => ({
+        kind,
+        serviceId: service.id,
+        serviceName: service.name,
+        professionalId: professional.id,
+        price: service.price,
+        durationMin: service.durationMin,
+      })),
+  )
 }
 
 export function cartLineKey(offer: Pick<CartLine, "serviceId" | "date" | "time">) {

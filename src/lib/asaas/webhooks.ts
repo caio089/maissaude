@@ -3,7 +3,7 @@ import "server-only"
 import { asaasFetch } from "@/lib/asaas/client"
 import { asaasEnvironment, asaasWebhookToken, isAsaasWebhookConfigured } from "@/lib/asaas/config"
 import { asaasBillingType } from "@/lib/asaas/format"
-import type { AsaasPayment, AsaasSubscription, AsaasWebhookPayload } from "@/lib/asaas/types"
+import type { AsaasPayment, AsaasPaymentLink, AsaasSubscription, AsaasWebhookPayload } from "@/lib/asaas/types"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 
 const EVENT_PATTERN = /^[A-Z][A-Z0-9_]{2,79}$/
@@ -100,6 +100,27 @@ async function applyWebhookSideEffects(payload: AsaasWebhookPayload) {
   const payment = await fetchVerifiedPayment(paymentId)
   if (!payment) return
 
+  const associateId = await associateFromPaymentLink(payment)
+  if (payment.subscription && associateId) {
+    const subscription = await fetchVerifiedSubscription(payment.subscription)
+    if (subscription) {
+      await admin.from("asaas_subscriptions").upsert({
+        id: subscription.id,
+        associate_id: associateId,
+        customer_id: subscription.customer || null,
+        billing_type: asaasBillingType(subscription.billingType),
+        status: subscription.status || "ACTIVE",
+        value: subscription.value ?? 0,
+        cycle: subscription.cycle || "MONTHLY",
+        next_due_date: subscription.nextDueDate || null,
+        external_reference: subscription.externalReference || null,
+        environment: asaasEnvironment(),
+        raw: subscription,
+        updated_at: new Date().toISOString(),
+      })
+    }
+  }
+
   await admin.from("asaas_charges").upsert({
     id: payment.id,
     customer_id: payment.customer || null,
@@ -162,6 +183,15 @@ async function fetchVerifiedSubscription(id: string) {
   const subscription = await asaasFetch<AsaasSubscription>(`/subscriptions/${id}`)
   if (!subscription?.id || subscription.deleted) return null
   return subscription
+}
+
+async function associateFromPaymentLink(payment: AsaasPayment) {
+  const paymentLinkId = payment.paymentLink?.trim()
+  if (!paymentLinkId || !RESOURCE_ID_PATTERN.test(paymentLinkId)) return null
+  const paymentLink = await asaasFetch<AsaasPaymentLink>(`/paymentLinks/${encodeURIComponent(paymentLinkId)}`)
+  const match = /^associate:([A-Za-z0-9_-]{3,80})$/.exec(paymentLink.externalReference || "")
+  if (!match) return null
+  return match[1]
 }
 
 function subscriptionStatus(event?: string, status?: string, deleted?: boolean) {

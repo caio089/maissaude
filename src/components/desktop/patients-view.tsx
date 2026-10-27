@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Plus, Search, Users } from "lucide-react"
 import { toast } from "sonner"
 import { FadeIn } from "@/components/shared/fade-in"
@@ -27,32 +27,82 @@ export function PatientsView() {
   const setSearch = useDemoStore((state) => state.setPatientSearch)
   const focusId = useDemoStore((state) => state.patientFocusId)
   const setFocusId = useDemoStore((state) => state.setPatientFocusId)
-  const createPatient = useDemoStore((state) => state.createPatient)
-  const updatePatient = useDemoStore((state) => state.updatePatient)
+  const [serverPatients, setServerPatients] = useState<Patient[]>([])
+  const [loadError, setLoadError] = useState("")
+  const [saving, setSaving] = useState(false)
+  const syncedLocalPatients = useRef(false)
   const [status, setStatus] = useState<PatientStatus | "all">("all")
   const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Patient | null>(null)
   const [form, setForm] = useState<PatientInput>(() => emptyPatientForm([]))
   const [errors, setErrors] = useState<Partial<Record<keyof PatientInput, string>>>({})
+  const patients = useMemo(() => {
+    const records = new Map<string, Patient>()
+    for (const patient of data.patients) records.set(patient.id, patient)
+    for (const patient of serverPatients) records.set(patient.id, patient)
+    return [...records.values()]
+  }, [data.patients, serverPatients])
+
+  async function refresh() {
+    const response = await fetch("/api/desktop/patients", { cache: "no-store" })
+    const result = await response.json() as { patients?: Patient[]; error?: string }
+    if (!response.ok) throw new Error(result.error || "Não foi possível carregar os pacientes.")
+    setServerPatients(result.patients || [])
+    setLoadError("")
+    return result.patients || []
+  }
+
+  useEffect(() => {
+    let active = true
+    void (async () => {
+      try {
+        const remote = await refresh()
+        if (syncedLocalPatients.current) return
+        syncedLocalPatients.current = true
+        const remoteKeys = new Set(remote.flatMap((patient) => [patient.id, patient.cpf.replace(/\D/g, ""), patient.email.trim().toLowerCase()]))
+        const pending = data.patients.filter((patient) => !remoteKeys.has(patient.id) && !remoteKeys.has(patient.cpf.replace(/\D/g, "")) && !remoteKeys.has(patient.email.trim().toLowerCase()))
+        if (!pending.length) return
+        const synced = await Promise.all(pending.map((patient) => fetch("/api/desktop/patients", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: patient.id,
+            form: {
+              name: patient.name, cpf: patient.cpf, phone: patient.phone, email: patient.email,
+              birthDate: patient.birthDate, gender: patient.gender, address: patient.address,
+              city: patient.city, status: patient.status, notes: patient.notes,
+            },
+          }),
+        })))
+        if (synced.some((response) => !response.ok)) {
+          throw new Error("Não foi possível salvar alguns pacientes que estavam somente neste navegador.")
+        }
+        if (active) await refresh()
+      } catch (error) {
+        if (active) setLoadError(error instanceof Error ? error.message : "Não foi possível carregar os pacientes.")
+      }
+    })()
+    return () => { active = false }
+  }, [data.patients])
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
-    return data.patients.filter((patient) => {
+    return patients.filter((patient) => {
       if (status !== "all" && patient.status !== status) return false
       if (!query) return true
       return [patient.name, patient.cpf, patient.email, patient.phone].some((value) => value.toLowerCase().includes(query))
     })
-  }, [data.patients, search, status])
+  }, [patients, search, status])
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const visiblePage = Math.min(page, pages - 1)
   const rows = filtered.slice(visiblePage * PAGE_SIZE, visiblePage * PAGE_SIZE + PAGE_SIZE)
-  const focused = data.patients.find((patient) => patient.id === focusId) ?? null
+  const focused = patients.find((patient) => patient.id === focusId) ?? null
 
   function openCreate() {
     setEditing(null)
-    setForm(emptyPatientForm(data.patients))
+    setForm(emptyPatientForm(patients))
     setErrors({})
     setFormOpen(true)
   }
@@ -75,19 +125,29 @@ export function PatientsView() {
     setFormOpen(true)
   }
 
-  function save() {
-    const nextErrors = patientFormErrors(form, data.patients, editing?.id)
+  async function save() {
+    const nextErrors = patientFormErrors(form, patients, editing?.id)
     setErrors(nextErrors)
     if (hasErrors(nextErrors)) return
-    if (editing) {
-      updatePatient(editing.id, form)
-      toast.success("Cadastro atualizado.")
-    } else {
-      const id = createPatient(form)
-      setFocusId(id)
-      toast.success("Paciente cadastrado.")
+    setSaving(true)
+    try {
+      const id = editing?.id || `pat-${crypto.randomUUID()}`
+      const response = await fetch("/api/desktop/patients", {
+        method: editing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, form }),
+      })
+      const result = await response.json() as { patient?: Patient; error?: string }
+      if (!response.ok || !result.patient) throw new Error(result.error || "Não foi possível salvar o paciente.")
+      await refresh()
+      setFocusId(result.patient.id)
+      setFormOpen(false)
+      toast.success(editing ? "Cadastro atualizado no banco." : "Paciente cadastrado no banco.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar o paciente.")
+    } finally {
+      setSaving(false)
     }
-    setFormOpen(false)
   }
 
   return (
@@ -96,7 +156,7 @@ export function PatientsView() {
         <div>
           <p className="section-kicker">Cadastro</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Pacientes</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{data.patients.length} {data.patients.length === 1 ? "paciente cadastrado" : "pacientes cadastrados"}.</p>
+          <p className="mt-1 text-sm text-muted-foreground">{patients.length} {patients.length === 1 ? "paciente cadastrado" : "pacientes cadastrados"}.</p>
         </div>
         <Button type="button" onClick={openCreate}><Plus /> Novo paciente</Button>
       </div>
@@ -115,6 +175,8 @@ export function PatientsView() {
           </SelectContent>
         </Select>
       </div>
+
+      {loadError ? <p role="alert" className="text-sm text-destructive">{loadError}</p> : null}
 
       <div className="panel overflow-hidden">
         {rows.length === 0 ? (
@@ -173,7 +235,7 @@ export function PatientsView() {
         </div>
       </div>
 
-      <PatientForm open={formOpen} title={editing ? "Editar paciente" : "Novo paciente"} form={form} errors={errors} onChange={setForm} onOpenChange={setFormOpen} onSave={save} />
+      <PatientForm open={formOpen} title={editing ? "Editar paciente" : "Novo paciente"} form={form} errors={errors} onChange={setForm} onOpenChange={setFormOpen} onSave={() => void save()} saving={saving} />
 
       <Sheet open={Boolean(focused)} onOpenChange={(open) => !open && setFocusId(null)}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-xl">

@@ -109,6 +109,7 @@ export function PatientForm({
   onOpenChange,
   onChange,
   onSave,
+  saving = false,
 }: {
   open: boolean
   title: string
@@ -117,6 +118,7 @@ export function PatientForm({
   onOpenChange: (open: boolean) => void
   onChange: (form: PatientInput) => void
   onSave: () => void
+  saving?: boolean
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -124,7 +126,7 @@ export function PatientForm({
         <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
         <PatientFields form={form} errors={errors} onChange={onChange} />
         <DialogFooter>
-          <Button type="button" onClick={onSave}>Salvar</Button>
+          <Button type="button" disabled={saving} onClick={onSave}>{saving ? "Salvando..." : "Salvar"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

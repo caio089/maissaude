@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { IdCard, Plus, Search } from "lucide-react"
+import { Copy, IdCard, Plus, Search } from "lucide-react"
 import { toast } from "sonner"
 import { AssociateRulesCard } from "@/components/desktop/associate-rules-card"
 import { Field } from "@/components/shared/field"
@@ -29,7 +29,7 @@ export function AssociatesView() {
   const [editing, setEditing] = useState<Associate | null>(null)
   const [form, setForm] = useState<AssociateInput>(() => emptyAssociateForm())
   const [errors, setErrors] = useState<FieldErrors<keyof AssociateInput>>({})
-  const [payment, setPayment] = useState<{ value: number; payload: string | null; encodedImage: string | null; invoiceUrl: string | null } | null>(null)
+  const [payment, setPayment] = useState<{ value: number; url: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [source, setSource] = useState<"new" | "patient">("new")
   const [patientQuery, setPatientQuery] = useState("")
@@ -125,9 +125,9 @@ export function AssociatesView() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...normalizedForm, patientId: selectedPatient?.id, patient: selectedPatient?.snapshot }),
         })
-        const body = await response.json() as { error?: string; associateId?: string; value?: number; pix?: { payload?: string | null; encodedImage?: string | null } | null; invoiceUrl?: string | null }
-        if (!response.ok || !body.value || !body.associateId) {
-          toast.error(body.error || "Não foi possível gerar o Pix.")
+        const body = await response.json() as { error?: string; associateId?: string; value?: number; paymentUrl?: string }
+        if (!response.ok || !body.value || !body.associateId || !body.paymentUrl) {
+          toast.error(body.error || "Não foi possível gerar o link de pagamento.")
           return
         }
         const result = createAssociate({ ...normalizedForm, status: "inactive" }, body.associateId)
@@ -136,12 +136,10 @@ export function AssociatesView() {
         }
         setPayment({
           value: body.value,
-          payload: body.pix?.payload || null,
-          encodedImage: body.pix?.encodedImage || null,
-          invoiceUrl: body.invoiceUrl || null,
+          url: body.paymentUrl || "",
         })
         setFormOpen(false)
-        toast.success("Cadastro criado e Pix gerado. A associação será ativada após a confirmação.")
+        toast.success("Link de assinatura no cartão gerado. A associação será ativada após a confirmação.")
         return
       } catch {
         toast.error("Não foi possível confirmar a criação da cobrança. Confira no Asaas antes de tentar novamente.")
@@ -167,7 +165,7 @@ export function AssociatesView() {
           <p className="section-kicker">Assinaturas</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Associados</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Cadastre presencialmente e gere o Pix da primeira mensalidade. A associação é ativada quando o Asaas confirmar o pagamento.
+            Cadastre presencialmente e gere o link de assinatura mensal no cartão. A associação é ativada quando o Asaas confirmar o pagamento.
           </p>
         </div>
         <Button type="button" onClick={openCreate}><Plus /> Novo associado</Button>
@@ -274,23 +272,25 @@ export function AssociatesView() {
                 </SelectContent>
               </Select>
             </Field>
-            <p className="self-end text-sm text-muted-foreground">Mensalidade de {formatMoney(rules.fee)}. Novos associados ficam pendentes até o Pix ser pago.</p>
+            <p className="self-end text-sm text-muted-foreground">Mensalidade de {formatMoney(rules.fee)}. O cartão é informado em uma página segura da Asaas; a associação fica pendente até a confirmação.</p>
           </div>
           <DialogFooter>
-            <Button type="button" disabled={saving || (!editing && source === "patient" && !selectedPatient)} onClick={() => void save()}>{saving ? "Gerando Pix..." : editing ? "Salvar" : "Cadastrar e gerar Pix"}</Button>
+            <Button type="button" disabled={saving || (!editing && source === "patient" && !selectedPatient)} onClick={() => void save()}>{saving ? "Gerando link..." : editing ? "Salvar" : "Gerar link de assinatura"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={Boolean(payment)} onOpenChange={(open) => { if (!open) setPayment(null) }}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Pix da primeira mensalidade</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Assinatura no cartão</DialogTitle></DialogHeader>
           {payment ? (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Valor: <strong className="text-foreground">{formatMoney(payment.value)}</strong>. Após a confirmação do Asaas, o associado será ativado.</p>
-              {payment.encodedImage ? <img className="mx-auto size-56" src={`data:image/png;base64,${payment.encodedImage}`} alt="QR Code Pix para pagamento da mensalidade" /> : null}
-              {payment.payload ? <Button type="button" variant="outline" className="w-full" onClick={() => { if (payment.payload) void navigator.clipboard.writeText(payment.payload).then(() => toast.success("Código Pix copiado.")) }}>Copiar código Pix</Button> : null}
-              {payment.invoiceUrl ? <Button asChild className="w-full"><a href={payment.invoiceUrl} target="_blank" rel="noreferrer">Abrir cobrança Asaas</a></Button> : null}
-              {!payment.encodedImage && !payment.payload ? <p className="rounded-xl bg-muted p-3 text-sm">A cobrança foi criada. Abra a cobrança Asaas para exibir o Pix.</p> : null}
+              <p className="text-sm text-muted-foreground">Mensalidade: <strong className="text-foreground">{formatMoney(payment.value)}</strong>. O paciente informa o cartão diretamente na Asaas. Após a confirmação, a assinatura e o acesso de associado são ativados.</p>
+              {payment.url ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button asChild><a href={payment.url} target="_blank" rel="noreferrer">Abrir link seguro da Asaas</a></Button>
+                  <Button type="button" variant="outline" onClick={() => void navigator.clipboard.writeText(payment.url).then(() => toast.success("Link copiado."))}><Copy /> Copiar link</Button>
+                </div>
+              ) : <p className="rounded-xl bg-muted p-3 text-sm">O link foi criado, mas não pôde ser exibido. Tente gerar novamente.</p>}
             </div>
           ) : null}
         </DialogContent>

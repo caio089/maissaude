@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { createAsaasSubscription } from "@/lib/asaas/subscriptions"
+import { createAssociateCardPaymentLink } from "@/lib/asaas/payment-links"
 import { cpfDigits, formatCpf, isValidCpf } from "@/lib/cpf"
 import { createId } from "@/lib/format"
 import { hasClinicSession } from "@/lib/clinic-session"
@@ -111,25 +111,12 @@ export async function POST(request: Request) {
     const { error: associateError } = await admin.from("associates").upsert({ id: associateId, name, cpf, phone, email, status: "inactive" })
     if (associateError) return NextResponse.json({ error: associateError.message }, { status: 422 })
 
-    const result = await createAsaasSubscription({
-      name,
-      cpf,
-      email,
-      mobilePhone: phone,
-      patientId,
-      associateId,
-      value: fee,
-      billingType: "PIX",
-      description: "Mensalidade de associado CuidarSaude",
-      externalReference: associateId,
-    })
+    const paymentLink = await createAssociateCardPaymentLink({ associateId, name, value: fee })
 
     return NextResponse.json({
       associateId,
-      subscriptionId: result.subscription.id,
-      value: result.subscription.value,
-      invoiceUrl: result.payment?.invoiceUrl || null,
-      pix: result.pix ? { payload: result.pix.payload || null, encodedImage: result.pix.encodedImage || null } : null,
+      value: fee,
+      paymentUrl: paymentLink.url,
     })
   } catch (error) {
     return NextResponse.json(

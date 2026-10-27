@@ -27,6 +27,14 @@ export type AsaasPayment = {
   invoiceUrl?: string
   externalReference?: string
   description?: string
+  paymentLink?: string
+  deleted?: boolean
+}
+
+export type AsaasPaymentLink = {
+  id?: string
+  url?: string
+  externalReference?: string
   deleted?: boolean
 }
 

@@ -6,10 +6,11 @@ import {
   findPatientByAuthUser,
   findPatientEmailByAccountEmail,
   findPatientEmailByCpf,
+  mapPatientRow,
   persistPatientAccount,
 } from "@/lib/auth/patients"
 import { toDateKey } from "@/lib/format"
-import { cpfDigits, isValidCpf } from "@/lib/cpf"
+import { cpfDigits, formatCpf, isValidCpf } from "@/lib/cpf"
 import { isValidPhone } from "@/lib/phone"
 import { createSupabaseAdmin, isSupabaseAdminConfigured } from "@/lib/supabase/admin"
 import { isSupabaseBrowserConfigured } from "@/lib/supabase/env"
@@ -24,7 +25,120 @@ export type PatientAuthResult =
   | { ok: true; patient: Patient }
   | { ok: false; message: string }
 
+export type PatientAccountLookupResult =
+  | { ok: true; state: "new" | "password_required" | "login" }
+  | { ok: false; message: string }
+
 export type RecoverResult = { ok: true; notice: string; next?: string } | { ok: false; message: string }
+
+export async function identifyPatientAccount(cpfInput: string): Promise<PatientAccountLookupResult> {
+  const configError = authConfigError()
+  if (configError) return configError
+  const cpf = cpfDigits(cpfInput)
+  if (!CPF_PATTERN.test(cpf) || !isValidCpf(cpf)) return { ok: false, message: "Informe um CPF válido." }
+
+  const admin = createSupabaseAdmin()
+  if (!admin) return { ok: false, message: "Service role do Supabase ainda não foi configurada." }
+
+  const { data: account, error: accountError } = await admin
+    .from("mobile_accounts")
+    .select("auth_user_id,email")
+    .in("cpf", [cpf, formatCpf(cpf)])
+    .limit(1)
+    .maybeSingle()
+  if (accountError) return { ok: false, message: "Não foi possível verificar a conta agora." }
+  if (account?.auth_user_id && account.email) return { ok: true, state: "login" }
+
+  const { data: patient, error: patientError } = await admin
+    .from("patients")
+    .select("id,status")
+    .in("cpf", [cpf, formatCpf(cpf)])
+    .limit(1)
+    .maybeSingle()
+  if (patientError) return { ok: false, message: "Não foi possível verificar o cadastro agora." }
+  if (patient?.status === "active") return { ok: true, state: "password_required" }
+  return { ok: true, state: "new" }
+}
+
+export async function createPasswordForExistingPatient(input: {
+  cpf: string
+  password: string
+}): Promise<PatientAuthResult> {
+  const configError = authConfigError()
+  if (configError) return configError
+  const cpf = cpfDigits(input.cpf)
+  const password = input.password
+  if (!CPF_PATTERN.test(cpf) || !isValidCpf(cpf)) return { ok: false, message: "Informe um CPF válido." }
+  if (password.length < AUTH_PASSWORD_MIN) {
+    return { ok: false, message: `A senha precisa ter ao menos ${AUTH_PASSWORD_MIN} caracteres.` }
+  }
+
+  const admin = createSupabaseAdmin()
+  if (!admin) return { ok: false, message: "Service role do Supabase ainda não foi configurada." }
+
+  const { data: existingAccount, error: accountLookupError } = await admin
+    .from("mobile_accounts")
+    .select("auth_user_id")
+    .in("cpf", [cpf, formatCpf(cpf)])
+    .limit(1)
+    .maybeSingle()
+  if (accountLookupError) return { ok: false, message: "Não foi possível verificar a conta agora." }
+  if (existingAccount?.auth_user_id) {
+    return { ok: false, message: "Este CPF já tem senha. Entre na sua conta ou recupere o acesso." }
+  }
+
+  const { data: patientRow, error: patientError } = await admin
+    .from("patients")
+    .select("*")
+    .in("cpf", [cpf, formatCpf(cpf)])
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle()
+  if (patientError || !patientRow) return { ok: false, message: "Paciente ativo não encontrado para este CPF." }
+  const patient = mapPatientRow(patientRow as Parameters<typeof mapPatientRow>[0])
+  const email = String(patient.email || "").trim().toLowerCase()
+  if (!EMAIL_PATTERN.test(email) || email === CLINIC_AUTH_EMAIL) {
+    return { ok: false, message: "O cadastro precisa de um e-mail válido antes de criar a senha do aplicativo." }
+  }
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    app_metadata: { role: "patient" },
+  })
+  if (error || !data.user) {
+    return { ok: false, message: friendlyAuthError(error?.message || "Não foi possível criar a senha.") }
+  }
+
+  try {
+    const { error: accountError } = await admin.from("mobile_accounts").upsert({
+      patient_id: patient.id,
+      cpf,
+      email,
+      auth_user_id: data.user.id,
+      password_hash: null,
+    })
+    if (accountError) throw new Error(accountError.message)
+
+    const { error: profileError } = await admin.from("profiles").upsert({
+      id: data.user.id,
+      role: "patient",
+      patient_id: patient.id,
+      email,
+      updated_at: new Date().toISOString(),
+    })
+    if (profileError) throw new Error(profileError.message)
+
+    const supabase = await createServerSupabase()
+    const signed = await supabase.auth.signInWithPassword({ email, password })
+    if (signed.error) throw signed.error
+    return { ok: true, patient }
+  } catch (linkError) {
+    await admin.auth.admin.deleteUser(data.user.id)
+    return { ok: false, message: linkError instanceof Error ? linkError.message : "Não foi possível vincular a conta." }
+  }
+}
 
 export async function registerPatientAccount(input: {
   name: string

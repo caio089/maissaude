@@ -1,5 +1,6 @@
 import "server-only"
 
+import { cpfDigits, formatCpf } from "@/lib/cpf"
 import { createId } from "@/lib/format"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 import type { Patient } from "@/lib/types"
@@ -106,7 +107,8 @@ export async function persistPatientAccount(input: {
 export async function findPatientEmailByCpf(cpf: string) {
   const admin = createSupabaseAdmin()
   if (!admin) return null
-  const { data } = await admin.from("mobile_accounts").select("email").eq("cpf", cpf).maybeSingle()
+  const digits = cpfDigits(cpf)
+  const { data } = await admin.from("mobile_accounts").select("email").in("cpf", [digits, formatCpf(digits)]).limit(1).maybeSingle()
   return data?.email?.trim() || null
 }
 

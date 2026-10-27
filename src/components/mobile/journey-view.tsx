@@ -11,7 +11,7 @@ import { FlowSteps } from "@/components/shared/flow-steps"
 import { Logo } from "@/components/brand/logo"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { loginPatientAccount, registerPatientAccount } from "@/lib/auth/patient-actions"
+import { createPasswordForExistingPatient, identifyPatientAccount, loginPatientAccount, registerPatientAccount } from "@/lib/auth/patient-actions"
 import { AUTH_PASSWORD_MIN } from "@/lib/auth/constants"
 import { associateQuote, findActiveAssociate } from "@/lib/associate-rules"
 import { formatDate, formatMoney } from "@/lib/format"
@@ -38,6 +38,7 @@ function AccountStep() {
   const adoptPatientSession = useDemoStore((state) => state.adoptPatientSession)
   const city = useDemoStore((state) => state.mobileCity)
   const [mode, setMode] = useState<"create" | "login">("create")
+  const [accountKind, setAccountKind] = useState<"identify" | "new" | "existing">("identify")
   const [stage, setStage] = useState<"form" | "offer">("form")
   const [name, setName] = useState("")
   const [cpf, setCpf] = useState("")
@@ -51,8 +52,9 @@ function AccountStep() {
 
   function accountError() {
     if (!isValidCpf(cpf)) return "Informe um CPF válido. Você pode digitar só os números."
+    if (mode === "create" && accountKind === "identify") return ""
     if (password.trim().length < AUTH_PASSWORD_MIN) return `A senha precisa ter ao menos ${AUTH_PASSWORD_MIN} caracteres.`
-    if (mode === "login") return ""
+    if (mode === "login" || accountKind === "existing") return ""
     if (name.trim().length < 3) return "Informe o nome da conta."
     if (!isValidPhone(phone)) return "Informe um WhatsApp válido com DDD. Pode digitar só os números."
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return "Informe um e-mail válido. Ele é usado para recuperar a senha."
@@ -68,9 +70,11 @@ function AccountStep() {
       return
     }
     setPending(true)
-    const result = mode === "create"
-      ? await registerPatientAccount({ name, cpf, phone, email, birthDate, password, city })
-      : await loginPatientAccount({ cpf, password })
+    const result = mode === "login"
+      ? await loginPatientAccount({ cpf, password })
+      : accountKind === "existing"
+        ? await createPasswordForExistingPatient({ cpf, password })
+        : await registerPatientAccount({ name, cpf, phone, email, birthDate, password, city })
     if (!result.ok) {
       setPending(false)
       setError(result.message)
@@ -88,7 +92,25 @@ function AccountStep() {
     const message = accountError()
     setError(message)
     if (message) return
-    if (mode === "login" || alreadyAssociate) {
+    if (mode === "create" && accountKind === "identify") {
+      setPending(true)
+      void identifyPatientAccount(cpf).then((result) => {
+        if (!result.ok) {
+          setError(result.message)
+          return
+        }
+        if (result.state === "login") {
+          setMode("login")
+          setAccountKind("identify")
+          setError("Este CPF já tem senha. Digite-a para entrar.")
+          return
+        }
+        setAccountKind(result.state === "password_required" ? "existing" : "new")
+        setError("")
+      }).finally(() => setPending(false))
+      return
+    }
+    if (mode === "login" || accountKind === "existing" || alreadyAssociate) {
       void createAccount()
       return
     }
@@ -114,18 +136,19 @@ function AccountStep() {
   return (
     <div className="px-4 pt-6 pb-8">
       <Logo />
-      <h1 className="mt-5 text-3xl font-semibold tracking-tight">{mode === "create" ? "Crie sua conta" : "Entre na sua conta"}</h1>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">Sua conta é protegida e a senha não aparece no painel da clínica.</p>
-      {mode === "create" ? (
+      <h1 className="mt-5 text-3xl font-semibold tracking-tight">{mode === "login" ? "Entre na sua conta" : accountKind === "existing" ? "Crie sua senha" : accountKind === "new" ? "Crie sua conta" : "Acesse com seu CPF"}</h1>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{accountKind === "existing" && mode === "create" ? "Encontramos seu cadastro da clínica. Crie uma senha para usar a mesma ficha no aplicativo." : "Sua conta é protegida e a senha não aparece no painel da clínica."}</p>
+      {mode === "create" && accountKind === "new" ? (
         <div className="mt-4">
           <FlowSteps steps={["Seus dados", "Associação"]} current={0} />
         </div>
       ) : null}
       <div className="surface-card mt-4 space-y-3 p-4">
         <label className="block text-sm">CPF
-          <Input className="mt-1 h-12" inputMode="numeric" placeholder="Somente números" value={cpf} onChange={(event) => setCpf(formatCpf(event.target.value))} autoComplete="off" />
+          <Input className="mt-1 h-12" inputMode="numeric" placeholder="Somente números" value={cpf} disabled={mode === "create" && accountKind !== "identify"} onChange={(event) => setCpf(formatCpf(event.target.value))} autoComplete="off" />
         </label>
-        {mode === "create" ? (
+        {mode === "create" && accountKind !== "identify" ? <button type="button" className="w-full text-left text-sm text-teal" onClick={() => { setAccountKind("identify"); setPassword(""); setError("") }}>Usar outro CPF</button> : null}
+        {mode === "create" && accountKind === "new" ? (
           <>
             <label className="block text-sm">Nome
               <Input className="mt-1 h-12" value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
@@ -141,16 +164,18 @@ function AccountStep() {
             </label>
           </>
         ) : null}
-        <label className="block text-sm">Senha
-          <Input className="mt-1 h-12" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "create" ? "new-password" : "current-password"} />
-        </label>
+        {mode === "login" || accountKind !== "identify" ? (
+          <label className="block text-sm">{accountKind === "existing" && mode === "create" ? "Crie uma senha" : "Senha"}
+            <Input className="mt-1 h-12" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "create" ? "new-password" : "current-password"} />
+          </label>
+        ) : null}
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         <Button type="button" className="h-12 w-full" disabled={pending} onClick={continueForm}>
           {pending ? <Loader2 className="animate-spin" /> : null}
-          {mode === "create" ? "Continuar" : "Entrar"}
+          {mode === "login" ? "Entrar" : accountKind === "existing" ? "Criar senha e entrar" : "Continuar"}
         </Button>
-        <Link href="/auth/recuperar" className="block w-full text-center text-sm text-teal">Esqueci a senha</Link>
-        <button type="button" className="w-full text-sm text-teal" onClick={() => { setMode(mode === "create" ? "login" : "create"); setError("") }}>
+        {mode === "login" ? <Link href="/auth/recuperar" className="block w-full text-center text-sm text-teal">Esqueci a senha</Link> : null}
+        <button type="button" className="w-full text-sm text-teal" onClick={() => { setMode(mode === "create" ? "login" : "create"); setAccountKind("identify"); setPassword(""); setError("") }}>
           {mode === "create" ? "Já tenho conta" : "Criar uma conta"}
         </button>
       </div>

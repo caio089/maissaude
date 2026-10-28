@@ -1,9 +1,11 @@
 import type { Metadata } from "next"
 import { LandingView } from "@/components/landing/landing-view"
 
+export const instant = false
+
 export const metadata: Metadata = {
-  title: { absolute: "CuidarSaude" },
-  description: "Demonstração comercial de gestão de clínicas e agendamento de consultas.",
+  title: { absolute: "CuidarSaude · Sua saúde na palma da mão" },
+  description: "Encontre profissionais, agende consultas e acompanhe seus pagamentos pelo celular.",
 }
 
 export default function HomePage() {

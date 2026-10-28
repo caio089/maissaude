@@ -5,6 +5,7 @@ import { useActionState } from "react"
 import { Field } from "@/components/shared/field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { CLINIC_AUTH_EMAIL } from "@/lib/auth/constants"
 import { loginClinic, type ClinicLoginState } from "@/lib/clinic-actions"
 
 export function ClinicLoginForm() {
@@ -18,10 +19,13 @@ export function ClinicLoginForm() {
           name="email"
           type="email"
           autoComplete="username"
-          placeholder="clinica@demonstracao.demo"
+          value={CLINIC_AUTH_EMAIL}
+          readOnly
+          aria-readonly="true"
           required
           className="h-11"
         />
+        <p className="mt-1 text-xs text-muted-foreground">O e-mail da clínica já está preenchido.</p>
       </Field>
       <Field label="Senha" htmlFor="clinic-password">
         <Input
@@ -31,6 +35,7 @@ export function ClinicLoginForm() {
           autoComplete="current-password"
           required
           className="h-11"
+          autoFocus
         />
       </Field>
       {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}

@@ -265,12 +265,25 @@ export const useDemoStore = create<DemoStore>()(
         return { ok: true }
       },
       logoutMobileAccount: () =>
-        set((state) => ({
-          mobileSessionPatientId: null,
-          booking: emptyBooking(),
-          lastCheckout: null,
-          data: { ...state.data, currentPatientId: "" },
-        })),
+        set((state) => {
+          const patientId = state.mobileSessionPatientId
+          const patientCpf = state.data.patients.find((item) => item.id === patientId)?.cpf
+          return {
+            mobileSessionPatientId: null,
+            mobileAccounts: state.mobileAccounts.filter((item) => item.patientId !== patientId),
+            associates: patientCpf ? state.associates.filter((item) => item.cpf !== patientCpf) : state.associates,
+            booking: emptyBooking(),
+            lastCheckout: null,
+            data: {
+              ...state.data,
+              currentPatientId: "",
+              patients: state.data.patients.filter((item) => item.id !== patientId),
+              appointments: state.data.appointments.filter((item) => item.patientId !== patientId),
+              payments: state.data.payments.filter((item) => item.patientId !== patientId),
+              records: state.data.records.filter((item) => item.patientId !== patientId),
+            },
+          }
+        }),
       adoptPatientSession: (patient) =>
         set((state) => {
           const exists = state.data.patients.some((item) => item.id === patient.id)

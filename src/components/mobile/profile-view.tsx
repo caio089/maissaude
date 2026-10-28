@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { logoutPatientAccount } from "@/lib/auth/patient-actions"
 import { buildNotifications } from "@/lib/metrics"
+import { maskCpf } from "@/lib/privacy"
 import { useDemoStore } from "@/lib/store"
 import { DEMO_CITIES } from "@/lib/types"
 import { hasErrors, validatePatientInput } from "@/lib/validation"
@@ -54,8 +55,8 @@ export function MobileProfile() {
         </div>
         <dl className="mt-4 grid grid-cols-2 gap-2 text-xs">
           <div className="rounded-2xl bg-white/10 px-3 py-2">
-            <dt className="text-white/60">CPF fictício</dt>
-            <dd className="mt-1 font-medium">{patient.cpf}</dd>
+            <dt className="text-white/60">CPF protegido</dt>
+            <dd className="mt-1 font-medium">{maskCpf(patient.cpf)}</dd>
           </div>
           <div className="rounded-2xl bg-white/10 px-3 py-2">
             <dt className="text-white/60">WhatsApp</dt>
@@ -69,10 +70,10 @@ export function MobileProfile() {
         <label className="block text-sm">Nome
           <Input className="mt-1 h-10" value={name} onChange={(event) => setName(event.target.value)} />
         </label>
-        <label className="block text-sm">Telefone fictício
+        <label className="block text-sm">Telefone
           <Input className="mt-1 h-10" value={phone} onChange={(event) => setPhone(event.target.value)} />
         </label>
-        <label className="block text-sm">E-mail de demonstração
+        <label className="block text-sm">E-mail
           <Input className="mt-1 h-10" value={email} onChange={(event) => setEmail(event.target.value)} />
         </label>
         <Button

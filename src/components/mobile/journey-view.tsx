@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useState } from "react"
-import { Loader2 } from "lucide-react"
+import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { AppointmentConfirmation } from "@/components/mobile/appointment-confirmation"
 import { AssociatePitch } from "@/components/mobile/associate-subscription"
@@ -47,6 +47,7 @@ function AccountStep() {
   const [email, setEmail] = useState("")
   const [birthDate, setBirthDate] = useState("")
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [pending, setPending] = useState(false)
 
@@ -143,9 +144,9 @@ function AccountStep() {
           <FlowSteps steps={["Seus dados", "Associação"]} current={0} />
         </div>
       ) : null}
-      <div className="surface-card mt-4 space-y-3 p-4">
+      <form className="surface-card mt-4 space-y-3 p-4" onSubmit={(event) => { event.preventDefault(); continueForm() }}>
         <label className="block text-sm">CPF
-          <Input className="mt-1 h-12" inputMode="numeric" placeholder="Somente números" value={cpf} disabled={mode === "create" && accountKind !== "identify"} onChange={(event) => setCpf(formatCpf(event.target.value))} autoComplete="off" />
+          <Input className="mt-1 h-12" inputMode="numeric" placeholder="Somente números" value={cpf} disabled={mode === "create" && accountKind !== "identify"} onChange={(event) => setCpf(formatCpf(event.target.value))} autoComplete="username" autoFocus />
         </label>
         {mode === "create" && accountKind !== "identify" ? <button type="button" className="w-full text-left text-sm text-teal" onClick={() => { setAccountKind("identify"); setPassword(""); setError("") }}>Usar outro CPF</button> : null}
         {mode === "create" && accountKind === "new" ? (
@@ -165,20 +166,27 @@ function AccountStep() {
           </>
         ) : null}
         {mode === "login" || accountKind !== "identify" ? (
-          <label className="block text-sm">{accountKind === "existing" && mode === "create" ? "Crie uma senha" : "Senha"}
-            <Input className="mt-1 h-12" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "create" ? "new-password" : "current-password"} />
-          </label>
+          <div className="block text-sm">
+            <label htmlFor="mobile-password">{accountKind === "existing" && mode === "create" ? "Crie uma senha" : "Senha"}</label>
+            <span className="relative mt-1 block">
+              <Input id="mobile-password" className="h-12 pr-20" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "create" ? "new-password" : "current-password"} />
+              <button type="button" className="absolute inset-y-0 right-3 inline-flex items-center gap-1 text-xs text-teal" aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} onClick={() => setShowPassword((current) => !current)}>
+                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                {showPassword ? "Ocultar" : "Mostrar"}
+              </button>
+            </span>
+          </div>
         ) : null}
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        <Button type="button" className="h-12 w-full" disabled={pending} onClick={continueForm}>
+        <Button type="submit" className="h-12 w-full" disabled={pending}>
           {pending ? <Loader2 className="animate-spin" /> : null}
           {mode === "login" ? "Entrar" : accountKind === "existing" ? "Criar senha e entrar" : "Continuar"}
         </Button>
         {mode === "login" ? <Link href="/auth/recuperar" className="block w-full text-center text-sm text-teal">Esqueci a senha</Link> : null}
-        <button type="button" className="w-full text-sm text-teal" onClick={() => { setMode(mode === "create" ? "login" : "create"); setAccountKind("identify"); setPassword(""); setError("") }}>
+        <button type="button" className="w-full text-sm text-teal" onClick={() => { setMode(mode === "create" ? "login" : "create"); setAccountKind("identify"); setPassword(""); setShowPassword(false); setError("") }}>
           {mode === "create" ? "Já tenho conta" : "Criar uma conta"}
         </button>
-      </div>
+      </form>
     </div>
   )
 }

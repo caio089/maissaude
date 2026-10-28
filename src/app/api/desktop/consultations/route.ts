@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { APPOINTMENT_CONFLICT_MESSAGE, isAppointmentConflictError } from "@/lib/appointments/conflicts"
 import { AsaasRequestError } from "@/lib/asaas/client"
 import { createAsaasCharge } from "@/lib/asaas/charges"
 import { hasClinicSession } from "@/lib/clinic-session"
@@ -93,6 +94,9 @@ export async function POST(request: Request) {
     const paymentId = createId("pay")
     const reference = `PG-${crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`
     const { error: appointmentError } = await db.from("appointments").insert({ id: appointmentId, patient_id: patient.id, professional_id: professional.id, service_id: service.id, starts_at: start.toISOString(), ends_at: end.toISOString(), status: "scheduled", modality: service.modality, notes: "Aguardando confirmação de pagamento.", origin: "desktop" })
+    if (isAppointmentConflictError(appointmentError)) {
+      return NextResponse.json({ error: APPOINTMENT_CONFLICT_MESSAGE }, { status: 409 })
+    }
     if (appointmentError) throw new Error("Não foi possível agendar a consulta.")
     const { error: paymentError } = await db.from("payments").insert({ id: paymentId, appointment_id: appointmentId, patient_id: patient.id, professional_id: professional.id, amount, method: body.billingType === "PIX" ? "pix" : "card", status: "pending", reference, simulated: false, description: `${service.name}${discount ? ` · desconto de associado ${discount}%` : ""}` })
     if (paymentError) return NextResponse.json({ error: "Consulta agendada, mas não foi possível registrar a cobrança. Verifique a consulta antes de tentar novamente." }, { status: 409 })

@@ -1,6 +1,7 @@
 import { addMinutes, formatISO } from "date-fns"
 import { NextResponse } from "next/server"
 
+import { AppointmentConflictError, isAppointmentConflictError } from "@/lib/appointments/conflicts"
 import { createAsaasCharge } from "@/lib/asaas/charges"
 import { cpfDigits } from "@/lib/cpf"
 import { combineDateAndTime, createId } from "@/lib/format"
@@ -82,7 +83,8 @@ export async function POST(request: Request) {
         notes: "Agendamento aguardando confirmação de pagamento.",
         origin: "mobile",
       })
-      if (appointmentError) throw new Error(appointmentError.message)
+      if (isAppointmentConflictError(appointmentError)) throw new AppointmentConflictError()
+      if (appointmentError) throw new Error("Não foi possível reservar esse horário.")
       const { error: paymentError } = await admin.from("payments").insert({
         id: paymentId,
         appointment_id: appointmentId,
@@ -128,7 +130,7 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ charges })
   } catch (error) {
-    const status = error instanceof PaymentAuthorizationError ? 401 : 422
+    const status = error instanceof PaymentAuthorizationError ? 401 : error instanceof AppointmentConflictError ? 409 : 422
     return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível gerar as cobranças." }, { status })
   }
 }

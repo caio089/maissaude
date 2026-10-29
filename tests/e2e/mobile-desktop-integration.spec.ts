@@ -31,6 +31,19 @@ async function prepareMobile(page: Page) {
       body: JSON.stringify({ professionals: TEST_PROFESSIONALS }),
     })
   })
+  await page.route("**/api/payments/cart/quote", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        associate: { active: false, discountPercent: 0, fee: 49.9 },
+        lines: [{ serviceId: "svc-consulta-presencial", listPrice: 120, amount: 120 }],
+        listTotal: 120,
+        total: 120,
+        discount: 0,
+      }),
+    })
+  })
 }
 
 async function addClinicSession(page: Page) {
@@ -68,12 +81,16 @@ test("consulta criada no mobile aparece na lista do desktop", async ({ page }) =
     payment_id: string
     origin: "mobile"
   } | null = null
+  let paymentRequest: { billingType: string; associateAnswer: string } | null = null
 
   await page.route("**/api/payments/cart", async (route) => {
     const request = route.request()
     const body = request.postDataJSON() as {
       lines: Array<{ professionalId: string; serviceId: string; date: string; time: string }>
+      billingType: string
+      associateAnswer: string
     }
+    paymentRequest = { billingType: body.billingType, associateAnswer: body.associateAnswer }
     const line = body.lines[0]
     appointment = {
       id: "apt-integration-mobile-desktop",
@@ -93,8 +110,10 @@ test("consulta criada no mobile aparece na lista do desktop", async ({ page }) =
           appointmentId: appointment.id,
           paymentId: appointment.payment_id,
           value: 120,
+          billingType: body.billingType,
           invoiceUrl: null,
           pix: { payload: "PIX-TESTE-SEM-COBRANCA", encodedImage: null },
+          pixUnavailable: false,
         }],
       }),
     })
@@ -109,6 +128,8 @@ test("consulta criada no mobile aparece na lista do desktop", async ({ page }) =
   await page.getByRole("button", { name: "Escolher este horário" }).click()
   await page.getByRole("button", { name: "Continuar" }).click()
   await page.getByRole("button", { name: "Confirmar e pagar" }).click()
+  await page.getByRole("button", { name: "Ainda não" }).click()
+  await page.getByTestId("payment-method-pix").click()
   await page.getByRole("button", { name: "Gerar Pix" }).click()
 
   await expect(page.getByRole("button", { name: "Copiar código Pix" })).toBeVisible()
@@ -120,6 +141,7 @@ test("consulta criada no mobile aparece na lista do desktop", async ({ page }) =
     status: "scheduled",
     origin: "mobile",
   })
+  expect(paymentRequest).toEqual({ billingType: "PIX", associateAnswer: "no" })
 
   await page.route("**/api/desktop/consultations", async (route) => {
     if (!appointment) throw new Error("O mobile não criou o agendamento de teste.")

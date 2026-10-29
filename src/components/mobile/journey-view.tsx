@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
-import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { BadgeCheck, CreditCard, Eye, EyeOff, Loader2, QrCode } from "lucide-react"
 import { toast } from "sonner"
 import { AppointmentConfirmation } from "@/components/mobile/appointment-confirmation"
 import { AssociatePitch } from "@/components/mobile/associate-subscription"
@@ -21,6 +21,22 @@ import { useDemoStore } from "@/lib/store"
 import type { CartLine } from "@/lib/types"
 
 type Stage = "catalog" | "confirm" | "pay"
+type BillingType = "PIX" | "CREDIT_CARD"
+type AssociateAnswer = "yes" | "no"
+type PaymentQuote = {
+  associate: { active: boolean; discountPercent: number; fee: number }
+  lines: Array<{ serviceId: string; listPrice: number; amount: number }>
+  listTotal: number
+  total: number
+  discount: number
+}
+type ChargeResult = {
+  value: number
+  billingType: BillingType
+  invoiceUrl: string | null
+  pix: { payload: string | null; encodedImage: string | null } | null
+  pixUnavailable?: boolean
+}
 
 export function MobileJourney() {
   const sessionId = useDemoStore((state) => state.mobileSessionPatientId)
@@ -263,29 +279,69 @@ function ConfirmStep({
 }
 
 function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void }) {
-  const quote = useAssociateContext()
-  const total = cart.reduce((sum, item) => sum + lineAmount(item, quote), 0)
+  const [quote, setQuote] = useState<PaymentQuote | null>(null)
+  const [quoteError, setQuoteError] = useState("")
+  const [quoteLoading, setQuoteLoading] = useState(true)
+  const [associateAnswer, setAssociateAnswer] = useState<AssociateAnswer | null>(null)
+  const [billingType, setBillingType] = useState<BillingType | null>(null)
   const [processing, setProcessing] = useState(false)
-  const [charges, setCharges] = useState<Array<{ value: number; invoiceUrl: string | null; pix: { payload: string | null; encodedImage: string | null } | null }> | null>(null)
+  const [charges, setCharges] = useState<ChargeResult[] | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void fetch("/api/payments/cart/quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lines: paymentLines(cart) }),
+      signal: controller.signal,
+    }).then(async (response) => {
+      const body = await response.json() as PaymentQuote & { error?: string }
+      if (!response.ok) throw new Error(body.error || "Não foi possível conferir os valores.")
+      setQuote(body)
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted) return
+      setQuoteError(error instanceof Error ? error.message : "Não foi possível conferir os valores.")
+    }).finally(() => {
+      if (!controller.signal.aborted) setQuoteLoading(false)
+    })
+    return () => controller.abort()
+  }, [cart])
 
   async function pay() {
+    if (!associateAnswer) {
+      toast.error("Informe se você é associado.")
+      return
+    }
+    if (associateAnswer === "yes" && !quote?.associate.active) {
+      toast.error("Não encontramos uma associação ativa para este CPF.")
+      return
+    }
+    if (!billingType) {
+      toast.error("Escolha Pix ou cartão.")
+      return
+    }
     setProcessing(true)
     try {
       const response = await fetch("/api/payments/cart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lines: cart.map(({ professionalId, serviceId, date, time }) => ({ professionalId, serviceId, date, time })) }),
+        body: JSON.stringify({ lines: paymentLines(cart), billingType, associateAnswer }),
       })
-      const body = await response.json() as { error?: string; charges?: Array<{ value: number; invoiceUrl: string | null; pix: { payload: string | null; encodedImage: string | null } | null }> }
+      const body = await response.json() as { error?: string; charges?: ChargeResult[]; quote?: PaymentQuote }
       if (!response.ok || !body.charges) {
-        toast.error(body.error || "Não foi possível gerar o Pix.")
+        toast.error(body.error || "Não foi possível gerar o pagamento.")
         return
       }
+      if (body.quote) setQuote(body.quote)
       setCharges(body.charges)
+    } catch {
+      toast.error("Não foi possível falar com a Asaas agora. Tente novamente.")
     } finally {
       setProcessing(false)
     }
   }
+
+  const blockedAssociate = associateAnswer === "yes" && quote && !quote.associate.active
 
   return (
     <section className="px-4 pt-6 pb-8">
@@ -294,7 +350,7 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
         <FlowSteps steps={["Carrinho", "Confirmar", "Pagar"]} current={2} />
       </div>
       <h1 className="mt-4 text-2xl font-semibold">Pagamento</h1>
-      <p className="mt-1 text-sm text-muted-foreground">O Pix é gerado pela Asaas. A consulta fica pendente até a confirmação do pagamento.</p>
+      <p className="mt-1 text-sm text-muted-foreground">Confirme sua associação e escolha como deseja pagar no ambiente seguro da Asaas.</p>
       <div className="surface-card mt-4 p-4">
         <ul className="space-y-2 text-sm">
           {cart.map((item) => (
@@ -303,30 +359,87 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
                 <span className="block font-medium">{item.serviceName}</span>
                 <span className="block text-xs text-muted-foreground">{formatDate(`${item.date}T12:00:00`, "dd/MM")} às {item.time}</span>
               </span>
-              <span className="shrink-0 font-medium">{formatMoney(lineAmount(item, quote))}</span>
+              <span className="shrink-0 font-medium">{formatMoney(quotedLineAmount(item, quote))}</span>
             </li>
           ))}
         </ul>
-        <p className="mt-3 border-t pt-3 text-2xl font-semibold">{formatMoney(total)}</p>
+        {quoteLoading ? <p className="mt-3 border-t pt-3 text-sm text-muted-foreground">Conferindo valores e associação...</p> : null}
+        {quoteError ? <p className="mt-3 border-t pt-3 text-sm text-destructive">{quoteError}</p> : null}
+        {quote ? (
+          <div className="mt-3 border-t pt-3">
+            {quote.discount > 0 ? <p className="text-xs text-muted-foreground">De <span className="line-through">{formatMoney(quote.listTotal)}</span> com desconto de associado</p> : null}
+            <p className="text-2xl font-semibold">{formatMoney(quote.total)}</p>
+          </div>
+        ) : null}
       </div>
+
+      {!charges ? (
+        <section className="surface-card mt-4 p-4">
+          <h2 className="font-semibold">Você é associado?</h2>
+          <p className="mt-1 text-sm text-muted-foreground">A resposta é confirmada pelo CPF da conta. O desconto só vale para associação ativa e para consultas.</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Button type="button" variant={associateAnswer === "yes" ? "default" : "outline"} onClick={() => setAssociateAnswer("yes")}>Sim, sou</Button>
+            <Button type="button" variant={associateAnswer === "no" ? "default" : "outline"} onClick={() => setAssociateAnswer("no")}>Ainda não</Button>
+          </div>
+          {quote?.associate.active ? (
+            <p className="mt-3 flex items-start gap-2 rounded-xl bg-[#e8f4f2] p-3 text-sm text-[#234f4c]"><BadgeCheck className="mt-0.5 size-4 shrink-0" /> Associação ativa confirmada. {quote.associate.discountPercent}% de desconto nas consultas.</p>
+          ) : null}
+          {blockedAssociate ? (
+            <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+              <p>Não encontramos uma associação ativa para este CPF.</p>
+              <div className="mt-2 flex flex-wrap gap-3">
+                <button type="button" className="font-medium underline" onClick={() => setAssociateAnswer("no")}>Continuar sem desconto</button>
+                <Link href="/mobile/perfil" className="font-medium underline">Quero me associar</Link>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {!charges && associateAnswer && !blockedAssociate ? (
+        <section className="surface-card mt-4 p-4">
+          <h2 className="font-semibold">Como deseja pagar?</h2>
+          <div className="mt-3 grid gap-2">
+            <button type="button" data-testid="payment-method-pix" aria-pressed={billingType === "PIX"} onClick={() => setBillingType("PIX")} className={`flex items-center gap-3 rounded-2xl p-3 text-left ring-1 ${billingType === "PIX" ? "bg-[#e8f4f2] ring-teal" : "bg-white ring-border"}`}>
+              <span className="grid size-11 place-items-center rounded-xl bg-[#dff2ee] text-teal"><QrCode className="size-5" /></span>
+              <span><span className="block font-medium">Pix</span><span className="block text-xs text-muted-foreground">QR Code e copia e cola</span></span>
+            </button>
+            <button type="button" data-testid="payment-method-card" aria-pressed={billingType === "CREDIT_CARD"} onClick={() => setBillingType("CREDIT_CARD")} className={`flex items-center gap-3 rounded-2xl p-3 text-left ring-1 ${billingType === "CREDIT_CARD" ? "bg-[#e9eef8] ring-[#365f8b]" : "bg-white ring-border"}`}>
+              <span className="grid size-11 place-items-center rounded-xl bg-[#e9eef8] text-[#365f8b]"><CreditCard className="size-5" /></span>
+              <span><span className="block font-medium">Cartão</span><span className="block text-xs text-muted-foreground">Dados preenchidos na página protegida da Asaas</span></span>
+            </button>
+          </div>
+          <Button type="button" className="mt-4 h-12 w-full" disabled={processing || !billingType || !quote || cart.length === 0} onClick={() => void pay()}>
+            {processing ? <Loader2 className="animate-spin" /> : null}
+            {billingType === "PIX" ? "Gerar Pix" : billingType === "CREDIT_CARD" ? "Continuar para o cartão" : "Escolha a forma de pagamento"}
+          </Button>
+        </section>
+      ) : null}
+
       {charges ? (
         <div className="mt-4 space-y-4">
           {charges.map((charge, index) => (
             <section key={index} className="surface-card p-4">
-              <p className="font-medium">Pix {charges.length > 1 ? `${index + 1} de ${charges.length}` : ""} · {formatMoney(charge.value)}</p>
+              <p className="font-medium">{charge.billingType === "PIX" ? "Pix" : "Cartão"} {charges.length > 1 ? `${index + 1} de ${charges.length}` : ""} · {formatMoney(charge.value)}</p>
               {charge.pix?.encodedImage ? <img className="mx-auto mt-3 size-52" src={`data:image/png;base64,${charge.pix.encodedImage}`} alt="QR Code Pix" /> : null}
               {charge.pix?.payload ? <Button type="button" variant="outline" className="mt-3 w-full" onClick={() => void navigator.clipboard.writeText(charge.pix?.payload || "").then(() => toast.success("Código Pix copiado."))}>Copiar código Pix</Button> : null}
-              {charge.invoiceUrl ? <Button asChild className="mt-3 w-full"><a href={charge.invoiceUrl} target="_blank" rel="noreferrer">Abrir cobrança</a></Button> : null}
+              {charge.pixUnavailable ? <p className="mt-3 rounded-xl bg-muted p-3 text-sm">O QR Code não carregou agora. Use o link da cobrança abaixo.</p> : null}
+              {charge.invoiceUrl ? <Button asChild className="mt-3 w-full"><a href={charge.invoiceUrl} target="_blank" rel="noreferrer">{charge.billingType === "CREDIT_CARD" ? "Pagar com cartão na Asaas" : "Abrir cobrança"}</a></Button> : null}
             </section>
           ))}
           <p className="text-center text-sm text-muted-foreground">Após o pagamento, a Asaas confirma automaticamente a cobrança.</p>
         </div>
-      ) : <Button type="button" className="mt-5 h-12 w-full" disabled={processing || cart.length === 0} onClick={() => void pay()}>
-        {processing ? <Loader2 className="animate-spin" /> : null}
-        Gerar Pix
-      </Button>}
+      ) : null}
     </section>
   )
+}
+
+function paymentLines(cart: CartLine[]) {
+  return cart.map(({ professionalId, serviceId, date, time }) => ({ professionalId, serviceId, date, time }))
+}
+
+function quotedLineAmount(line: CartLine, quote: PaymentQuote | null) {
+  return quote?.lines.find((item) => item.serviceId === line.serviceId)?.amount ?? line.price
 }
 
 function useAssociateContext() {

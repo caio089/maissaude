@@ -112,4 +112,50 @@ test.describe("novo fluxo de agendamento mobile", () => {
     await expect(page.getByRole("heading", { name: "Escolha dia e horário" })).toBeVisible()
     await expect(page.getByText("Avaliação clínica")).toBeVisible()
   })
+
+  test("confere associação e permite pagar com cartão pela Asaas", async ({ page }) => {
+    let paymentBody: { billingType?: string; associateAnswer?: string } | null = null
+    await page.route("**/api/payments/cart/quote", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          associate: { active: false, discountPercent: 0, fee: 49.9 },
+          lines: [{ serviceId: "svc-consulta-presencial", listPrice: 120, amount: 120 }],
+          listTotal: 120,
+          total: 120,
+          discount: 0,
+        }),
+      })
+    })
+    await page.route("**/api/payments/cart", async (route) => {
+      paymentBody = route.request().postDataJSON() as { billingType?: string; associateAnswer?: string }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          charges: [{ value: 120, billingType: "CREDIT_CARD", invoiceUrl: "https://asaas.example/fatura", pix: null, pixUnavailable: false }],
+        }),
+      })
+    })
+    await openAsPatient(page)
+
+    await page.getByTestId("booking-kind-consulta").click()
+    await page.getByRole("button", { name: /Consulta presencial/ }).click()
+    await page.getByTestId("booking-offer").first().click()
+    await page.locator('[data-testid="booking-date"]:not([disabled])').first().click()
+    await page.getByTestId("booking-time").first().click()
+    await page.getByRole("button", { name: "Escolher este horário" }).click()
+    await page.getByRole("button", { name: "Continuar" }).click()
+    await page.getByRole("button", { name: "Confirmar e pagar" }).click()
+
+    await expect(page.getByRole("heading", { name: "Você é associado?" })).toBeVisible()
+    await page.getByRole("button", { name: "Ainda não" }).click()
+    await expect(page.getByTestId("payment-method-pix")).toBeVisible()
+    await page.getByTestId("payment-method-card").click()
+    await page.getByRole("button", { name: "Continuar para o cartão" }).click()
+
+    await expect(page.getByRole("link", { name: "Pagar com cartão na Asaas" })).toHaveAttribute("href", "https://asaas.example/fatura")
+    expect(paymentBody).toMatchObject({ billingType: "CREDIT_CARD", associateAnswer: "no" })
+  })
 })

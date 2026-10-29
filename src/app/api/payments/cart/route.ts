@@ -3,29 +3,44 @@ import { NextResponse } from "next/server"
 
 import { AppointmentConflictError, isAppointmentConflictError } from "@/lib/appointments/conflicts"
 import { createAsaasCharge } from "@/lib/asaas/charges"
-import { cpfDigits } from "@/lib/cpf"
 import { combineDateAndTime, createId } from "@/lib/format"
+import { getCartQuote, type CartPaymentLineInput } from "@/lib/payments/cart-quote"
 import { PaymentAuthorizationError, requireCurrentPatient } from "@/lib/payments/current-patient"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 
-type CartLine = { professionalId?: string; serviceId?: string; date?: string; time?: string }
+type BillingType = "PIX" | "CREDIT_CARD"
+type AssociateAnswer = "yes" | "no"
 
 export async function POST(request: Request) {
   try {
     const patient = await requireCurrentPatient()
-    const body = (await request.json()) as { lines?: CartLine[] }
+    const body = (await request.json()) as {
+      lines?: CartPaymentLineInput[]
+      billingType?: BillingType
+      associateAnswer?: AssociateAnswer
+    }
     const lines = Array.isArray(body.lines) ? body.lines.slice(0, 5) : []
     if (lines.length === 0) return NextResponse.json({ error: "Inclua ao menos um atendimento." }, { status: 400 })
+    if (body.billingType !== "PIX" && body.billingType !== "CREDIT_CARD") {
+      return NextResponse.json({ error: "Escolha Pix ou cartão." }, { status: 400 })
+    }
+    if (body.associateAnswer !== "yes" && body.associateAnswer !== "no") {
+      return NextResponse.json({ error: "Informe se você é associado." }, { status: 400 })
+    }
 
     const admin = createSupabaseAdmin()
     if (!admin) return NextResponse.json({ error: "Pagamentos ainda não foram configurados." }, { status: 503 })
 
-    const { data: associate } = await admin.from("associates").select("status").eq("cpf", cpfDigits(patient.cpf)).maybeSingle()
-    const { data: rules } = await admin.from("associate_rules").select("consultation_discount_percent").eq("id", true).maybeSingle()
-    const discount = associate?.status === "active" ? Number(rules?.consultation_discount_percent) || 0 : 0
-    const charges: Array<{ appointmentId: string; paymentId: string; value: number; invoiceUrl: string | null; pix: { payload: string | null; encodedImage: string | null } | null }> = []
+    const quote = await getCartQuote(admin, patient.cpf, lines)
+    if (body.associateAnswer === "yes" && !quote.associate.active) {
+      return NextResponse.json({
+        error: "Não encontramos uma associação ativa para este CPF. Continue sem desconto ou assine o plano.",
+        code: "ASSOCIATE_NOT_ACTIVE",
+      }, { status: 409 })
+    }
+    const charges: Array<{ appointmentId: string; paymentId: string; value: number; billingType: BillingType; invoiceUrl: string | null; pix: { payload: string | null; encodedImage: string | null } | null; pixUnavailable: boolean }> = []
 
-    for (const line of lines) {
+    for (const [index, line] of lines.entries()) {
       const professionalId = line.professionalId?.trim()
       const serviceId = line.serviceId?.trim()
       const date = line.date?.trim()
@@ -69,7 +84,9 @@ export async function POST(request: Request) {
 
       const appointmentId = createId("apt")
       const paymentId = createId("pay")
-      const price = Math.round(Number(service.price) * (100 - discount)) / 100
+      const quotedLine = quote.lines[index]
+      const price = quotedLine.amount
+      const appliedDiscount = quotedLine.listPrice - quotedLine.amount
       const reference = `PG-${crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`
       const { error: appointmentError } = await admin.from("appointments").insert({
         id: appointmentId,
@@ -91,11 +108,11 @@ export async function POST(request: Request) {
         patient_id: patient.id,
         professional_id: professionalId,
         amount: price,
-        method: "pix",
+        method: body.billingType === "PIX" ? "pix" : "card",
         status: "pending",
         reference,
         simulated: false,
-        description: `${service.name}${discount ? ` · desconto de associado ${discount}%` : ""}`,
+        description: `${service.name}${appliedDiscount > 0 ? ` · desconto de associado ${quote.associate.discountPercent}%` : ""}`,
       })
       if (paymentError) {
         await admin.from("appointments").delete().eq("id", appointmentId)
@@ -110,7 +127,7 @@ export async function POST(request: Request) {
           patientId: patient.id,
           paymentId,
           value: price,
-          billingType: "PIX",
+          billingType: body.billingType,
           description: `Agendamento: ${service.name}`,
           externalReference: reference,
         })
@@ -119,8 +136,10 @@ export async function POST(request: Request) {
           appointmentId,
           paymentId,
           value: price,
+          billingType: body.billingType,
           invoiceUrl: result.payment.invoiceUrl || null,
           pix: result.pix ? { payload: result.pix.payload || null, encodedImage: result.pix.encodedImage || null } : null,
+          pixUnavailable: result.pixUnavailable,
         })
       } catch (error) {
         await admin.from("payments").delete().eq("id", paymentId)
@@ -128,7 +147,7 @@ export async function POST(request: Request) {
         throw error
       }
     }
-    return NextResponse.json({ charges })
+    return NextResponse.json({ charges, quote })
   } catch (error) {
     const status = error instanceof PaymentAuthorizationError ? 401 : error instanceof AppointmentConflictError ? 409 : 422
     return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível gerar as cobranças." }, { status })

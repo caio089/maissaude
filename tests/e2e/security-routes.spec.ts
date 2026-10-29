@@ -15,10 +15,12 @@ test.describe("proteção de rotas e login", () => {
   test("rotas do paciente recusam acesso sem sessão", async ({ request }) => {
     const catalog = await request.get("/api/mobile/catalog")
     const cart = await request.post("/api/payments/cart", { data: { lines: [] } })
+    const quote = await request.post("/api/payments/cart/quote", { data: { lines: [] } })
     const subscription = await request.post("/api/payments/subscription")
 
     expect(catalog.status()).toBe(401)
     expect(cart.status()).toBe(401)
+    expect(quote.status()).toBe(401)
     expect(subscription.status()).toBe(401)
   })
 

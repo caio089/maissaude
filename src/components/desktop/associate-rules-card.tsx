@@ -1,12 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Field } from "@/components/shared/field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { associateRulesError, normalizeAssociateRules } from "@/lib/associate-rules"
+import { associateRulesError, MIN_ASSOCIATE_FEE, normalizeAssociateRules } from "@/lib/associate-rules"
 import { formatMoney } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
 import type { AssociateRules } from "@/lib/types"
@@ -16,16 +16,41 @@ export function AssociateRulesCard() {
   const updateAssociateRules = useDemoStore((state) => state.updateAssociateRules)
   const [draft, setDraft] = useState<AssociateRules>(saved)
 
-  function save() {
-    const next = normalizeAssociateRules({
+  useEffect(() => {
+    const controller = new AbortController()
+    void fetch("/api/desktop/associate-rules", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json() as { rules?: AssociateRules }
+        if (!response.ok || !body.rules) return
+        const rules = normalizeAssociateRules(body.rules)
+        setDraft(rules)
+        updateAssociateRules(rules)
+      })
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [updateAssociateRules])
+
+  async function save() {
+    const candidate: AssociateRules = {
       ...draft,
       fee: Number(draft.fee),
       consultationDiscountPercent: Number(draft.consultationDiscountPercent),
       transportRidesPerMonth: Number(draft.transportRidesPerMonth),
-    })
-    const message = associateRulesError(next)
+    }
+    const message = associateRulesError(candidate)
     if (message) {
       toast.error(message)
+      return
+    }
+    const next = normalizeAssociateRules(candidate)
+    const response = await fetch("/api/desktop/associate-rules", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(next),
+    })
+    const body = await response.json() as { error?: string; rules?: AssociateRules }
+    if (!response.ok || !body.rules) {
+      toast.error(body.error || "Não foi possível salvar as regras.")
       return
     }
     const result = updateAssociateRules(next)
@@ -46,8 +71,8 @@ export function AssociateRulesCard() {
         </p>
       </div>
       <div className="grid gap-3 md:grid-cols-3">
-        <Field label="Mensalidade" htmlFor="associate-fee">
-          <Input id="associate-fee" className="h-10" inputMode="decimal" value={draft.fee} onChange={(event) => setDraft({ ...draft, fee: Number(event.target.value) })} />
+        <Field label="Mensalidade" htmlFor="associate-fee" hint="Para os testes, use a partir de R$ 1.">
+          <Input id="associate-fee" type="number" min={MIN_ASSOCIATE_FEE} max="500" step="0.01" className="h-10" inputMode="decimal" value={draft.fee} onChange={(event) => setDraft({ ...draft, fee: Number(event.target.value) })} />
         </Field>
         <Field label="Desconto na consulta (%)" htmlFor="associate-discount" hint="Vale no pagamento pelo aplicativo. Até 80%.">
           <Input id="associate-discount" className="h-10" inputMode="numeric" value={draft.consultationDiscountPercent} onChange={(event) => setDraft({ ...draft, consultationDiscountPercent: Number(event.target.value) })} />

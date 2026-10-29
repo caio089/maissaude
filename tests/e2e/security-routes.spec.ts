@@ -6,10 +6,14 @@ test.describe("proteção de rotas e login", () => {
     const consultations = await request.get("/api/desktop/consultations")
     const patients = await request.get("/api/desktop/patients")
     const associate = await request.post("/api/payments/associate", { data: {} })
+    const associateRules = await request.get("/api/desktop/associate-rules")
+    const updateAssociateRules = await request.put("/api/desktop/associate-rules", { data: {} })
 
     expect(consultations.status()).toBe(401)
     expect(patients.status()).toBe(401)
     expect(associate.status()).toBe(401)
+    expect(associateRules.status()).toBe(401)
+    expect(updateAssociateRules.status()).toBe(401)
   })
 
   test("rotas do paciente recusam acesso sem sessão", async ({ request }) => {

@@ -6,6 +6,8 @@ import {
 } from "@/lib/types"
 import { cpfDigits } from "@/lib/cpf"
 
+export const MIN_ASSOCIATE_FEE = 1
+
 export const DEFAULT_ASSOCIATE_RULES: AssociateRules = {
   fee: ASSOCIATE_FEE,
   consultationDiscountPercent: 20,
@@ -19,7 +21,7 @@ export const DEFAULT_ASSOCIATE_RULES: AssociateRules = {
 
 export function normalizeAssociateRules(value: Partial<AssociateRules> | null | undefined): AssociateRules {
   return {
-    fee: clamp(value?.fee, 0, 500, DEFAULT_ASSOCIATE_RULES.fee),
+    fee: clamp(value?.fee, MIN_ASSOCIATE_FEE, 500, DEFAULT_ASSOCIATE_RULES.fee),
     consultationDiscountPercent: clamp(value?.consultationDiscountPercent, 0, 80, DEFAULT_ASSOCIATE_RULES.consultationDiscountPercent),
     transportEnabled: value?.transportEnabled ?? DEFAULT_ASSOCIATE_RULES.transportEnabled,
     transportRidesPerMonth: clamp(value?.transportRidesPerMonth, 0, 31, DEFAULT_ASSOCIATE_RULES.transportRidesPerMonth),
@@ -30,8 +32,8 @@ export function normalizeAssociateRules(value: Partial<AssociateRules> | null | 
 }
 
 export function associateRulesError(rules: AssociateRules) {
-  if (!Number.isFinite(rules.fee) || rules.fee < 0 || rules.fee > 500) {
-    return "A mensalidade fica entre R$ 0 e R$ 500."
+  if (!Number.isFinite(rules.fee) || rules.fee < MIN_ASSOCIATE_FEE || rules.fee > 500) {
+    return "A mensalidade fica entre R$ 1 e R$ 500."
   }
   if (!Number.isInteger(rules.consultationDiscountPercent) || rules.consultationDiscountPercent < 0 || rules.consultationDiscountPercent > 80) {
     return "O desconto da consulta fica entre 0% e 80%."

@@ -17,7 +17,7 @@ import { ServiceFields } from "@/components/desktop/service-fields"
 import { formatMoney, WEEKDAY_SHORT } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
 import { SPECIALTIES, SPECIALTY_LABEL, type Professional, type ProfessionalInput, type Service, type Specialty } from "@/lib/types"
-import { hasErrors, validateProfessionalInput } from "@/lib/validation"
+import { hasErrors, MIN_PROFESSIONAL_PRICE, validateProfessionalInput } from "@/lib/validation"
 
 const blank = (): ProfessionalInput => ({
   name: "",
@@ -230,8 +230,8 @@ export function ProfessionalsView() {
             <Field label="Registro profissional" htmlFor="pro-credential" error={errors.credentialCode}>
               <Input id="pro-credential" className="h-10" value={form.credentialCode} onChange={(event) => setForm({ ...form, credentialCode: event.target.value })} />
             </Field>
-            <Field label="Valor da consulta" htmlFor="pro-price" error={errors.price}>
-              <Input id="pro-price" type="number" className="h-10" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} />
+            <Field label="Valor da consulta" htmlFor="pro-price" error={errors.price} hint="Para os testes, você pode usar valores a partir de R$ 1.">
+              <Input id="pro-price" type="number" min={MIN_PROFESSIONAL_PRICE} max="2000" step="0.01" className="h-10" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} />
             </Field>
             <Field label="Dias de atendimento" error={errors.workDays}>
               <div className="flex flex-wrap gap-3">

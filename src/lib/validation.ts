@@ -5,6 +5,7 @@ import { isValidPhone } from "@/lib/phone"
 export type FieldErrors<K extends string> = Partial<Record<K, string>>
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+export const MIN_PROFESSIONAL_PRICE = 1
 
 export function validatePatientInput(input: PatientInput) {
   const errors: FieldErrors<keyof PatientInput> = {}
@@ -48,8 +49,8 @@ export function validateProfessionalInput(input: ProfessionalInput) {
   if (input.credentialCode.trim().length < 3) {
     errors.credentialCode = "Informe o registro profissional."
   }
-  if (!Number.isFinite(input.price) || input.price < 50 || input.price > 2000) {
-    errors.price = "Informe um valor entre R$ 50 e R$ 2.000."
+  if (!Number.isFinite(input.price) || input.price < MIN_PROFESSIONAL_PRICE || input.price > 2000) {
+    errors.price = "Informe um valor entre R$ 1 e R$ 2.000."
   }
   if (input.workDays.length === 0) errors.workDays = "Selecione ao menos um dia de atendimento."
   if (input.bio.trim().length < 12) errors.bio = "Escreva uma descrição curta do profissional."

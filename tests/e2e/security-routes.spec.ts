@@ -16,11 +16,13 @@ test.describe("proteção de rotas e login", () => {
     const catalog = await request.get("/api/mobile/catalog")
     const cart = await request.post("/api/payments/cart", { data: { lines: [] } })
     const quote = await request.post("/api/payments/cart/quote", { data: { lines: [] } })
+    const subscriptionStatus = await request.get("/api/payments/subscription")
     const subscription = await request.post("/api/payments/subscription")
 
     expect(catalog.status()).toBe(401)
     expect(cart.status()).toBe(401)
     expect(quote.status()).toBe(401)
+    expect(subscriptionStatus.status()).toBe(401)
     expect(subscription.status()).toBe(401)
   })
 

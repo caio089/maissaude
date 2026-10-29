@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { BadgeCheck, CreditCard, Eye, EyeOff, Loader2, QrCode } from "lucide-react"
 import { toast } from "sonner"
@@ -51,6 +52,7 @@ export function MobileJourney() {
 }
 
 function AccountStep() {
+  const router = useRouter()
   const adoptPatientSession = useDemoStore((state) => state.adoptPatientSession)
   const city = useDemoStore((state) => state.mobileCity)
   const [mode, setMode] = useState<"create" | "login">("create")
@@ -79,7 +81,7 @@ function AccountStep() {
     return ""
   }
 
-  async function createAccount() {
+  async function createAccount(showAssociation = false) {
     const message = accountError()
     if (message) {
       setError(message)
@@ -103,6 +105,7 @@ function AccountStep() {
       toast.success("Este CPF já é associado. A assinatura continua valendo.")
     }
     setPending(false)
+    if (showAssociation) router.push("/mobile/perfil?associar=1")
   }
 
   function continueForm() {
@@ -138,10 +141,10 @@ function AccountStep() {
     return (
       <AssociatePitch
         title="Quer ser associado?"
-        lead="A associação só começa com a assinatura mensal. Se preferir agora não, a conta é criada mesmo assim e a assinatura fica nas configurações."
+        lead="Veja todos os benefícios e, se quiser continuar, informe o cartão somente na página segura da Asaas. A mensalidade não aceita Pix."
         stepsCurrent={1}
-        primaryLabel="Criar minha conta"
-        onPrimary={() => void createAccount()}
+        primaryLabel="Criar conta e ver assinatura"
+        onPrimary={() => void createAccount(true)}
         secondaryLabel="Agora não"
         onSecondary={() => void createAccount()}
         onBack={() => setStage("form")}

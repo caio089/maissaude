@@ -35,7 +35,12 @@ export type AsaasPaymentLink = {
   id?: string
   url?: string
   externalReference?: string
+  active?: boolean
   deleted?: boolean
+}
+
+export type AsaasPaymentLinkList = {
+  data?: AsaasPaymentLink[]
 }
 
 export type AsaasPaymentList = {

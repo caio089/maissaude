@@ -158,4 +158,46 @@ test.describe("novo fluxo de agendamento mobile", () => {
     await expect(page.getByRole("link", { name: "Pagar com cartão na Asaas" })).toHaveAttribute("href", "https://asaas.example/fatura")
     expect(paymentBody).toMatchObject({ billingType: "CREDIT_CARD", associateAnswer: "no" })
   })
+
+  test("mostra todos os benefícios e envia a assinatura somente para o cartão da Asaas", async ({ page }) => {
+    let subscriptionCreated = false
+    await page.route("**/api/payments/subscription", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            active: false,
+            subscriptionStatus: null,
+            rules: {
+              fee: 49.9,
+              consultationDiscountPercent: 20,
+              transportEnabled: true,
+              transportRidesPerMonth: 4,
+              extraBenefits: ["Prioridade de encaixe", "Desconto em exames"],
+            },
+          }),
+        })
+        return
+      }
+      subscriptionCreated = true
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ billingType: "CREDIT_CARD", value: 49.9, paymentUrl: "https://asaas.example/assinatura-cartao" }),
+      })
+    })
+    await openAsPatient(page)
+    await page.goto("/mobile/perfil?associar=1")
+
+    await expect(page.getByRole("heading", { name: "Veja tudo antes de assinar" })).toBeVisible()
+    await expect(page.getByText("20% de desconto nas consultas pelo aplicativo")).toBeVisible()
+    await expect(page.getByText("4 passagens de transporte no mês")).toBeVisible()
+    await expect(page.getByText("A mensalidade não aceita Pix.")).toBeVisible()
+    await page.getByRole("button", { name: "Continuar para o cartão" }).click()
+
+    await expect(page.getByRole("heading", { name: "Página segura pronta" })).toBeVisible()
+    await expect(page.getByRole("link", { name: /Ir para a Asaas e cadastrar cartão/ })).toHaveAttribute("href", "https://asaas.example/assinatura-cartao")
+    expect(subscriptionCreated).toBe(true)
+  })
 })

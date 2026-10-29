@@ -23,7 +23,7 @@ function localDateKey() {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10)
 }
 
-async function openAsPatient(page: Page) {
+async function openAsPatient(page: Page, professionals = TEST_PROFESSIONALS) {
   const data = testData(localDateKey())
   await page.addInitScript(
     ({ key, persisted }) => localStorage.setItem(key, JSON.stringify(persisted)),
@@ -39,7 +39,7 @@ async function openAsPatient(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ professionals: TEST_PROFESSIONALS }),
+      body: JSON.stringify({ professionals }),
     })
   })
   await page.goto("/mobile")
@@ -95,5 +95,21 @@ test.describe("novo fluxo de agendamento mobile", () => {
     await expect(page.getByRole("heading", { name: "Escolha dia e horário" })).toBeVisible()
     await expect(page.getByText("Dra. Ana Teste")).toBeVisible()
     await expect(page.locator('[data-testid="booking-date"]:not([disabled])').first()).toBeVisible()
+  })
+
+  test("mostra no acesso direto o médico que possui somente exame", async ({ page }) => {
+    const examOnly = [{
+      ...TEST_PROFESSIONALS[0],
+      name: "Dr. José Exames",
+      services: [TEST_PROFESSIONALS[0].services.find((service) => service.kind === "exame")!],
+    }]
+    await openAsPatient(page, examOnly)
+
+    await expect(page.getByTestId("direct-professional")).toContainText("Dr. José Exames")
+    await expect(page.getByTestId("direct-professional")).toContainText("Avaliação clínica")
+    await page.getByTestId("direct-professional").click()
+
+    await expect(page.getByRole("heading", { name: "Escolha dia e horário" })).toBeVisible()
+    await expect(page.getByText("Avaliação clínica")).toBeVisible()
   })
 })

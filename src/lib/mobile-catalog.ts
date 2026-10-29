@@ -17,6 +17,18 @@ export function offersFor(kind: CatalogKind, professionals: Professional[]) {
   return serviceOffers(kind, professionals)
 }
 
+export function firstOfferForProfessional(professional: Professional): CatalogOffer | null {
+  if (!professional.active) return null
+
+  const preferredKinds: CatalogKind[] = ["consulta", "exame", "cirurgia"]
+  for (const kind of preferredKinds) {
+    const offer = serviceOffers(kind, [professional])[0]
+    if (offer) return offer
+  }
+
+  return null
+}
+
 function serviceOffers(kind: CatalogKind, professionals: Professional[]): CatalogOffer[] {
   return professionals.filter((item) => item.active).flatMap((professional) =>
     professional.services

@@ -19,7 +19,7 @@ import { Portrait } from "@/components/shared/portrait"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { findActiveAssociate } from "@/lib/associate-rules"
-import { cartLineKey, offersFor, type CatalogOffer } from "@/lib/mobile-catalog"
+import { cartLineKey, firstOfferForProfessional, offersFor, type CatalogOffer } from "@/lib/mobile-catalog"
 import { formatDate, formatMoney, toDateKey, WEEKDAY_SHORT } from "@/lib/format"
 import { availableSlots } from "@/lib/schedule"
 import { useDemoStore } from "@/lib/store"
@@ -112,7 +112,7 @@ export function CatalogPanel({
             professionals={active}
             onKind={startKind}
             onProfessional={(offer) => {
-              setKind("consulta")
+              setKind(offer.kind)
               setModality("all")
               setDraft(offer)
               setScreen("slot")
@@ -219,15 +219,17 @@ function StartScreen({
         </div>
         <div className="mt-3 flex gap-3 overflow-x-auto phone-scroll pb-1">
           {professionals.map((professional) => {
-            const offer = offersFor("consulta", [professional]).find((item) => serviceForOffer(item, [professional])?.modality === "presencial")
-              ?? offersFor("consulta", [professional])[0]
+            const consultationOffers = offersFor("consulta", [professional])
+            const offer = consultationOffers.find((item) => serviceForOffer(item, [professional])?.modality === "presencial")
+              ?? consultationOffers[0]
+              ?? firstOfferForProfessional(professional)
             if (!offer) return null
             return (
               <button key={professional.id} type="button" data-testid="direct-professional" onClick={() => onProfessional(offer)} className="w-40 shrink-0 rounded-[1.5rem] bg-white p-3 text-left ring-1 ring-border">
                 <Portrait seed={professional.avatarSeed} name={professional.name} className="size-12" />
                 <span className="mt-3 block truncate text-sm font-semibold">{professional.name}</span>
                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">{SPECIALTY_LABEL[professional.specialty]}</span>
-                <span className="mt-2 block text-xs font-medium text-teal">Ver horários</span>
+                <span className="mt-2 block truncate text-xs font-medium text-teal">{offer.serviceName} · ver horários</span>
               </button>
             )
           })}

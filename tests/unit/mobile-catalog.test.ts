@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { cartLineKey, catalogOfferFor, offersFor } from "@/lib/mobile-catalog"
+import { cartLineKey, catalogOfferFor, firstOfferForProfessional, offersFor } from "@/lib/mobile-catalog"
 import { TEST_PROFESSIONALS } from "../fixtures/mobile"
 
 describe("catálogo do agendamento mobile", () => {
@@ -12,6 +12,19 @@ describe("catálogo do agendamento mobile", () => {
   it("não mostra serviços de profissional inativo", () => {
     const inactive = [{ ...TEST_PROFESSIONALS[0], active: false }]
     expect(offersFor("consulta", inactive)).toEqual([])
+  })
+
+  it("mantém o profissional visível quando ele possui somente exame", () => {
+    const professional = {
+      ...TEST_PROFESSIONALS[0],
+      services: [TEST_PROFESSIONALS[0].services.find((service) => service.kind === "exame")!],
+    }
+
+    expect(firstOfferForProfessional(professional)).toMatchObject({
+      kind: "exame",
+      professionalId: professional.id,
+      serviceName: "Avaliação clínica",
+    })
   })
 
   it("gera uma chave diferente para cada data e horário", () => {

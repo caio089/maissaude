@@ -4,6 +4,7 @@ import { asaasFetch } from "@/lib/asaas/client"
 import { asaasEnvironment } from "@/lib/asaas/config"
 import { ensureAsaasCustomer, type EnsureAsaasCustomerInput } from "@/lib/asaas/customers"
 import { asaasBillingType, moneyValue, saoPauloDate } from "@/lib/asaas/format"
+import { minimumAsaasCharge, minimumAsaasChargeMessage } from "@/lib/asaas/minimums"
 import type { AsaasBillingType, AsaasPayment, AsaasPaymentList, AsaasPixQrCode } from "@/lib/asaas/types"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 
@@ -17,7 +18,8 @@ export type CreateAsaasChargeInput = EnsureAsaasCustomerInput & {
 }
 
 export async function createAsaasCharge(input: CreateAsaasChargeInput) {
-  if (!Number.isFinite(input.value) || input.value <= 0 || input.value > 50_000) {
+  if (!Number.isFinite(input.value) || input.value < minimumAsaasCharge(input.billingType) || input.value > 50_000) {
+    if (Number.isFinite(input.value) && input.value > 0) throw new Error(minimumAsaasChargeMessage(input.billingType))
     throw new Error("Informe um valor válido para a cobrança.")
   }
 

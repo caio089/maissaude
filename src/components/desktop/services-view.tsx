@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { ServiceFields } from "@/components/desktop/service-fields"
 import { Button } from "@/components/ui/button"
 import { formatMoney } from "@/lib/format"
+import { ASAAS_PIX_MINIMUM } from "@/lib/asaas/minimums"
 import { useDemoStore } from "@/lib/store"
 import type { Professional, Service } from "@/lib/types"
 
@@ -44,8 +45,8 @@ export function ServicesView() {
   const selected = professionals.find((p) => p.id === professionalId)
   const needsImport = Boolean(selected && !serverProfessionals.some((p) => p.id === selected.id))
   async function save() {
-    if (!professionalId || !services.length || services.some((s) => !s.name.trim() || s.price <= 0 || !Number.isInteger(s.durationMin) || s.durationMin <= 0)) {
-      toast.error("Selecione o profissional e preencha os atendimentos.")
+    if (!professionalId || !services.length || services.some((s) => !s.name.trim() || s.price < ASAAS_PIX_MINIMUM || !Number.isInteger(s.durationMin) || s.durationMin <= 0)) {
+      toast.error("Selecione o profissional e use pelo menos R$ 10 em cada atendimento.")
       return
     }
     setSaving(true)

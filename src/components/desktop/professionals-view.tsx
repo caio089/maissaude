@@ -105,8 +105,8 @@ export function ProfessionalsView() {
     const nextErrors = validateProfessionalInput(form)
     setErrors(nextErrors)
     if (hasErrors(nextErrors)) return
-    if (services.some((service) => !service.name.trim() || service.price <= 0 || !Number.isInteger(service.durationMin) || service.durationMin <= 0)) {
-      toast.error("Confira o nome, valor e duração de cada atendimento.")
+    if (services.some((service) => !service.name.trim() || service.price < MIN_PROFESSIONAL_PRICE || !Number.isInteger(service.durationMin) || service.durationMin <= 0)) {
+      toast.error("Cada atendimento precisa custar pelo menos R$ 10 para gerar Pix.")
       return
     }
     setSaving(true)
@@ -230,7 +230,7 @@ export function ProfessionalsView() {
             <Field label="Registro profissional" htmlFor="pro-credential" error={errors.credentialCode}>
               <Input id="pro-credential" className="h-10" value={form.credentialCode} onChange={(event) => setForm({ ...form, credentialCode: event.target.value })} />
             </Field>
-            <Field label="Valor da consulta" htmlFor="pro-price" error={errors.price} hint="Para os testes, você pode usar valores a partir de R$ 1.">
+            <Field label="Valor da consulta" htmlFor="pro-price" error={errors.price} hint="Para testar Pix na Asaas, use a partir de R$ 10.">
               <Input id="pro-price" type="number" min={MIN_PROFESSIONAL_PRICE} max="2000" step="0.01" className="h-10" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} />
             </Field>
             <Field label="Dias de atendimento" error={errors.workDays}>

@@ -2,6 +2,7 @@ import "server-only"
 
 import { asaasFetch } from "@/lib/asaas/client"
 import { moneyValue } from "@/lib/asaas/format"
+import { ASAAS_CARD_MINIMUM } from "@/lib/asaas/minimums"
 import type { AsaasPaymentLink, AsaasPaymentLinkList } from "@/lib/asaas/types"
 
 export async function createAssociateCardPaymentLink(input: {
@@ -10,7 +11,7 @@ export async function createAssociateCardPaymentLink(input: {
   value: number
   successUrl?: string
 }) {
-  if (!Number.isFinite(input.value) || input.value <= 0 || input.value > 500) {
+  if (!Number.isFinite(input.value) || input.value < ASAAS_CARD_MINIMUM || input.value > 500) {
     throw new Error("Informe um valor válido para a mensalidade.")
   }
 

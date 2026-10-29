@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { createPasswordForExistingPatient, identifyPatientAccount, loginPatientAccount, registerPatientAccount } from "@/lib/auth/patient-actions"
 import { AUTH_PASSWORD_MIN } from "@/lib/auth/constants"
 import { associateQuote, findActiveAssociate } from "@/lib/associate-rules"
+import { minimumAsaasCharge, minimumAsaasChargeMessage } from "@/lib/asaas/minimums"
 import { formatDate, formatMoney } from "@/lib/format"
 import { cpfDigits, formatCpf, isValidCpf } from "@/lib/cpf"
 import { isValidPhone } from "@/lib/phone"
@@ -345,6 +346,7 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
   }
 
   const blockedAssociate = associateAnswer === "yes" && quote && !quote.associate.active
+  const belowPaymentMinimum = Boolean(billingType && quote?.lines.some((line) => line.amount < minimumAsaasCharge(billingType)))
 
   return (
     <section className="px-4 pt-6 pb-8">
@@ -412,7 +414,8 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
               <span><span className="block font-medium">Cartão</span><span className="block text-xs text-muted-foreground">Dados preenchidos na página protegida da Asaas</span></span>
             </button>
           </div>
-          <Button type="button" className="mt-4 h-12 w-full" disabled={processing || !billingType || !quote || cart.length === 0} onClick={() => void pay()}>
+          {billingType && belowPaymentMinimum ? <p role="alert" className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{minimumAsaasChargeMessage(billingType)} Ajuste o valor no painel da clínica.</p> : null}
+          <Button type="button" className="mt-4 h-12 w-full" disabled={processing || !billingType || !quote || cart.length === 0 || belowPaymentMinimum} onClick={() => void pay()}>
             {processing ? <Loader2 className="animate-spin" /> : null}
             {billingType === "PIX" ? "Gerar Pix" : billingType === "CREDIT_CARD" ? "Continuar para o cartão" : "Escolha a forma de pagamento"}
           </Button>

@@ -159,6 +159,42 @@ test.describe("novo fluxo de agendamento mobile", () => {
     expect(paymentBody).toMatchObject({ billingType: "CREDIT_CARD", associateAnswer: "no" })
   })
 
+  test("explica o mínimo do Pix antes de tentar criar uma cobrança baixa", async ({ page }) => {
+    let chargeRequests = 0
+    await page.route("**/api/payments/cart/quote", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          associate: { active: false, discountPercent: 0, fee: 30 },
+          lines: [{ serviceId: "svc-consulta-presencial", listPrice: 1, amount: 1 }],
+          listTotal: 1,
+          total: 1,
+          discount: 0,
+        }),
+      })
+    })
+    page.on("request", (request) => {
+      if (request.url().endsWith("/api/payments/cart")) chargeRequests += 1
+    })
+    await openAsPatient(page)
+
+    await page.getByTestId("booking-kind-consulta").click()
+    await page.getByRole("button", { name: /Consulta presencial/ }).click()
+    await page.getByTestId("booking-offer").first().click()
+    await page.locator('[data-testid="booking-date"]:not([disabled])').first().click()
+    await page.getByTestId("booking-time").first().click()
+    await page.getByRole("button", { name: "Escolher este horário" }).click()
+    await page.getByRole("button", { name: "Continuar" }).click()
+    await page.getByRole("button", { name: "Confirmar e pagar" }).click()
+    await page.getByRole("button", { name: "Ainda não" }).click()
+    await page.getByTestId("payment-method-pix").click()
+
+    await expect(page.getByText(/Para gerar Pix na Asaas, cada atendimento precisa ficar em pelo menos R\$ 10/)).toBeVisible()
+    await expect(page.getByRole("button", { name: "Gerar Pix" })).toBeDisabled()
+    expect(chargeRequests).toBe(0)
+  })
+
   test("mostra todos os benefícios e envia a assinatura somente para o cartão da Asaas", async ({ page }) => {
     let subscriptionCreated = false
     await page.route("**/api/payments/subscription", async (route) => {

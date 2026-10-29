@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { hasClinicSession } from "@/lib/clinic-session"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 import type { Service } from "@/lib/types"
+import { ASAAS_PIX_MINIMUM } from "@/lib/asaas/minimums"
 
 export async function POST(request: Request) {
   if (!(await hasClinicSession())) return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
@@ -9,7 +10,7 @@ export async function POST(request: Request) {
   if (!db) return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
   try {
     const body = await request.json() as { professionalId?: string; services?: Service[] }
-    if (!body.professionalId || !Array.isArray(body.services) || !body.services.length || body.services.length > 100 || body.services.some((s) => !s.id || !s.name?.trim() || s.name.trim().length > 120 || !Number.isInteger(s.durationMin) || s.durationMin < 1 || s.durationMin > 1440 || !Number.isFinite(s.price) || s.price <= 0 || s.price > 50000 || !["presencial", "teleconsulta"].includes(s.modality) || !["consulta", "exame", "cirurgia"].includes(s.kind || "consulta"))) {
+    if (!body.professionalId || !Array.isArray(body.services) || !body.services.length || body.services.length > 100 || body.services.some((s) => !s.id || !s.name?.trim() || s.name.trim().length > 120 || !Number.isInteger(s.durationMin) || s.durationMin < 1 || s.durationMin > 1440 || !Number.isFinite(s.price) || s.price < ASAAS_PIX_MINIMUM || s.price > 50000 || !["presencial", "teleconsulta"].includes(s.modality) || !["consulta", "exame", "cirurgia"].includes(s.kind || "consulta"))) {
       return NextResponse.json({ error: "Confira o profissional e os dados de cada atendimento." }, { status: 422 })
     }
     const professional = await db.from("professionals").select("id,active").eq("id", body.professionalId).maybeSingle()

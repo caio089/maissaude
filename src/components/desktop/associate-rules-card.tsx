@@ -71,7 +71,7 @@ export function AssociateRulesCard() {
         </p>
       </div>
       <div className="grid gap-3 md:grid-cols-3">
-        <Field label="Mensalidade" htmlFor="associate-fee" hint="Para os testes, use a partir de R$ 1.">
+        <Field label="Mensalidade" htmlFor="associate-fee" hint="Para testar o cartão na Asaas, use a partir de R$ 5.">
           <Input id="associate-fee" type="number" min={MIN_ASSOCIATE_FEE} max="500" step="0.01" className="h-10" inputMode="decimal" value={draft.fee} onChange={(event) => setDraft({ ...draft, fee: Number(event.target.value) })} />
         </Field>
         <Field label="Desconto na consulta (%)" htmlFor="associate-discount" hint="Vale no pagamento pelo aplicativo. Até 80%.">

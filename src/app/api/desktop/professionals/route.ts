@@ -4,6 +4,7 @@ import { createId } from "@/lib/format"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 import { SPECIALTIES, type ProfessionalInput, type Service } from "@/lib/types"
 import { hasErrors, validateProfessionalInput } from "@/lib/validation"
+import { ASAAS_PIX_MINIMUM } from "@/lib/asaas/minimums"
 
 export async function GET() {
   if (!(await hasClinicSession())) return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
     if (!form || !SPECIALTIES.includes(form.specialty) || hasErrors(validateProfessionalInput(form)) || !Array.isArray(body.services) || body.services.length > 100 || !/^\d{2}:\d{2}$/.test(form.startHour) || !/^\d{2}:\d{2}$/.test(form.endHour) || form.endHour <= form.startHour) {
       return NextResponse.json({ error: "Confira os dados e horários do profissional." }, { status: 422 })
     }
-    if (body.services.some((s) => !s.id || !s.name?.trim() || s.name.trim().length > 120 || !Number.isInteger(s.durationMin) || s.durationMin < 1 || s.durationMin > 1440 || !Number.isFinite(s.price) || s.price <= 0 || s.price > 50000 || !["presencial", "teleconsulta"].includes(s.modality) || !["consulta", "exame", "cirurgia"].includes(s.kind || "consulta"))) {
+    if (body.services.some((s) => !s.id || !s.name?.trim() || s.name.trim().length > 120 || !Number.isInteger(s.durationMin) || s.durationMin < 1 || s.durationMin > 1440 || !Number.isFinite(s.price) || s.price < ASAAS_PIX_MINIMUM || s.price > 50000 || !["presencial", "teleconsulta"].includes(s.modality) || !["consulta", "exame", "cirurgia"].includes(s.kind || "consulta"))) {
       return NextResponse.json({ error: "Confira nome, valor, duração e tipo de cada atendimento." }, { status: 422 })
     }
     const id = body.id || createId("pro")

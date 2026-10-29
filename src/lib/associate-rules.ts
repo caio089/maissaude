@@ -5,8 +5,9 @@ import {
   type AssociateRules,
 } from "@/lib/types"
 import { cpfDigits } from "@/lib/cpf"
+import { ASAAS_CARD_MINIMUM } from "@/lib/asaas/minimums"
 
-export const MIN_ASSOCIATE_FEE = 1
+export const MIN_ASSOCIATE_FEE = ASAAS_CARD_MINIMUM
 
 export const DEFAULT_ASSOCIATE_RULES: AssociateRules = {
   fee: ASSOCIATE_FEE,
@@ -33,7 +34,7 @@ export function normalizeAssociateRules(value: Partial<AssociateRules> | null | 
 
 export function associateRulesError(rules: AssociateRules) {
   if (!Number.isFinite(rules.fee) || rules.fee < MIN_ASSOCIATE_FEE || rules.fee > 500) {
-    return "A mensalidade fica entre R$ 1 e R$ 500."
+    return "A mensalidade fica entre R$ 5 e R$ 500."
   }
   if (!Number.isInteger(rules.consultationDiscountPercent) || rules.consultationDiscountPercent < 0 || rules.consultationDiscountPercent > 80) {
     return "O desconto da consulta fica entre 0% e 80%."

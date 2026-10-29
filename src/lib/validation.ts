@@ -1,11 +1,12 @@
 import type { AssociateInput, PatientInput, ProfessionalInput } from "@/lib/types"
 import { isValidCpf } from "@/lib/cpf"
 import { isValidPhone } from "@/lib/phone"
+import { ASAAS_PIX_MINIMUM } from "@/lib/asaas/minimums"
 
 export type FieldErrors<K extends string> = Partial<Record<K, string>>
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-export const MIN_PROFESSIONAL_PRICE = 1
+export const MIN_PROFESSIONAL_PRICE = ASAAS_PIX_MINIMUM
 
 export function validatePatientInput(input: PatientInput) {
   const errors: FieldErrors<keyof PatientInput> = {}
@@ -50,7 +51,7 @@ export function validateProfessionalInput(input: ProfessionalInput) {
     errors.credentialCode = "Informe o registro profissional."
   }
   if (!Number.isFinite(input.price) || input.price < MIN_PROFESSIONAL_PRICE || input.price > 2000) {
-    errors.price = "Informe um valor entre R$ 1 e R$ 2.000."
+    errors.price = "Informe um valor entre R$ 10 e R$ 2.000."
   }
   if (input.workDays.length === 0) errors.workDays = "Selecione ao menos um dia de atendimento."
   if (input.bio.trim().length < 12) errors.bio = "Escreva uma descrição curta do profissional."

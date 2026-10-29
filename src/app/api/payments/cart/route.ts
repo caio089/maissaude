@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 
 import { AppointmentConflictError, isAppointmentConflictError } from "@/lib/appointments/conflicts"
 import { createAsaasCharge } from "@/lib/asaas/charges"
+import { minimumAsaasCharge, minimumAsaasChargeMessage } from "@/lib/asaas/minimums"
 import { combineDateAndTime, createId } from "@/lib/format"
 import { getCartQuote, type CartPaymentLineInput } from "@/lib/payments/cart-quote"
 import { PaymentAuthorizationError, requireCurrentPatient } from "@/lib/payments/current-patient"
@@ -37,6 +38,14 @@ export async function POST(request: Request) {
         error: "Não encontramos uma associação ativa para este CPF. Continue sem desconto ou assine o plano.",
         code: "ASSOCIATE_NOT_ACTIVE",
       }, { status: 409 })
+    }
+    const minimumCharge = minimumAsaasCharge(body.billingType)
+    if (quote.lines.some((line) => line.amount < minimumCharge)) {
+      return NextResponse.json({
+        error: minimumAsaasChargeMessage(body.billingType),
+        code: "PAYMENT_VALUE_BELOW_MINIMUM",
+        minimumCharge,
+      }, { status: 422 })
     }
     const charges: Array<{ appointmentId: string; paymentId: string; value: number; billingType: BillingType; invoiceUrl: string | null; pix: { payload: string | null; encodedImage: string | null } | null; pixUnavailable: boolean }> = []
 

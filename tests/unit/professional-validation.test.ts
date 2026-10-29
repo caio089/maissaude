@@ -17,12 +17,12 @@ const professional: ProfessionalInput = {
 
 describe("valor de consulta em testes", () => {
   it("aceita valor abaixo de R$ 50", () => {
-    expect(validateProfessionalInput({ ...professional, price: 1 }).price).toBeUndefined()
     expect(validateProfessionalInput({ ...professional, price: 10 }).price).toBeUndefined()
   })
 
-  it("continua recusando valor zerado ou acima do limite", () => {
+  it("recusa valor abaixo do mínimo da Asaas ou acima do limite", () => {
     expect(validateProfessionalInput({ ...professional, price: 0 }).price).toBeTruthy()
+    expect(validateProfessionalInput({ ...professional, price: 1 }).price).toBeTruthy()
     expect(validateProfessionalInput({ ...professional, price: 2000.01 }).price).toBeTruthy()
   })
 })

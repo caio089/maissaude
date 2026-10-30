@@ -29,6 +29,11 @@ export function parseDateKey(key: string) {
 }
 
 export function combineDateAndTime(dateKey: string, time: string) {
+  const paddedTime = time.length === 5 ? `${time}:00` : time
+  const dateWithTz = new Date(`${dateKey}T${paddedTime}-03:00`)
+  if (Number.isFinite(dateWithTz.getTime())) {
+    return dateWithTz
+  }
   const [hours, minutes] = time.split(":").map(Number)
   const date = parseDateKey(dateKey)
   date.setHours(hours ?? 0, minutes ?? 0, 0, 0)

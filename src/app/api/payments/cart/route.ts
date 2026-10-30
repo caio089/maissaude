@@ -49,6 +49,19 @@ export async function POST(request: Request) {
     }
     const charges: Array<{ appointmentId: string; paymentId: string; value: number; billingType: BillingType; invoiceUrl: string | null; pix: { payload: string | null; encodedImage: string | null } | null; pixUnavailable: boolean }> = []
 
+    type PreparedCartLine = {
+      index: number
+      professionalId: string
+      serviceId: string
+      service: { name: string; modality: string; duration_min: number }
+      startsAt: Date
+      endsAt: Date
+      price: number
+      appliedDiscount: number
+    }
+
+    const preparedLines: PreparedCartLine[] = []
+
     for (const [index, line] of lines.entries()) {
       const professionalId = line.professionalId?.trim()
       const serviceId = line.serviceId?.trim()
@@ -73,9 +86,18 @@ export async function POST(request: Request) {
 
       const startsAt = combineDateAndTime(date as string, time as string)
       const endsAt = addMinutes(startsAt, Number(service.duration_min))
-      if (startsAt <= new Date() || !Array.isArray(professional.work_days) || !professional.work_days.includes(startsAt.getDay())) {
+      const weekday = new Date(`${date}T12:00:00Z`).getUTCDay()
+      if (startsAt <= new Date() || !Array.isArray(professional.work_days) || !professional.work_days.includes(weekday)) {
         throw new Error("Escolha um horário futuro dentro da agenda do profissional.")
       }
+
+      const cartCollision = preparedLines.some(
+        (prev) => prev.professionalId === professionalId && prev.startsAt < endsAt && prev.endsAt > startsAt
+      )
+      if (cartCollision) {
+        throw new Error("Conflito de horário entre itens do próprio carrinho.")
+      }
+
       const { data: conflicts } = await admin
         .from("appointments")
         .select("id, starts_at, ends_at")
@@ -91,43 +113,61 @@ export async function POST(request: Request) {
         .gt("ends_at", formatISO(startsAt))
       if ((conflicts?.length || 0) > 0 || (blocks?.length || 0) > 0) throw new Error("Este horário acabou de ser reservado. Escolha outro.")
 
-      const appointmentId = createId("apt")
-      const paymentId = createId("pay")
       const quotedLine = quote.lines[index]
       const price = quotedLine.amount
       const appliedDiscount = quotedLine.listPrice - quotedLine.amount
-      const reference = `PG-${crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`
-      const { error: appointmentError } = await admin.from("appointments").insert({
-        id: appointmentId,
-        patient_id: patient.id,
-        professional_id: professionalId,
-        service_id: serviceId,
-        starts_at: formatISO(startsAt),
-        ends_at: formatISO(endsAt),
-        status: "scheduled",
-        modality: service.modality,
-        notes: "Agendamento aguardando confirmação de pagamento.",
-        origin: "mobile",
+
+      preparedLines.push({
+        index,
+        professionalId,
+        serviceId,
+        service: { name: service.name, modality: service.modality, duration_min: service.duration_min },
+        startsAt,
+        endsAt,
+        price,
+        appliedDiscount,
       })
-      if (isAppointmentConflictError(appointmentError)) throw new AppointmentConflictError()
-      if (appointmentError) throw new Error("Não foi possível reservar esse horário.")
-      const { error: paymentError } = await admin.from("payments").insert({
-        id: paymentId,
-        appointment_id: appointmentId,
-        patient_id: patient.id,
-        professional_id: professionalId,
-        amount: price,
-        method: body.billingType === "PIX" ? "pix" : "card",
-        status: "pending",
-        reference,
-        simulated: false,
-        description: `${service.name}${appliedDiscount > 0 ? ` · desconto de associado ${quote.associate.discountPercent}%` : ""}`,
-      })
-      if (paymentError) {
-        await admin.from("appointments").delete().eq("id", appointmentId)
-        throw new Error(paymentError.message)
-      }
-      try {
+    }
+
+    const createdAppointments: string[] = []
+    const createdPayments: string[] = []
+
+    try {
+      for (const item of preparedLines) {
+        const appointmentId = createId("apt")
+        const paymentId = createId("pay")
+        const reference = `PG-${crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`
+        const { error: appointmentError } = await admin.from("appointments").insert({
+          id: appointmentId,
+          patient_id: patient.id,
+          professional_id: item.professionalId,
+          service_id: item.serviceId,
+          starts_at: formatISO(item.startsAt),
+          ends_at: formatISO(item.endsAt),
+          status: "scheduled",
+          modality: item.service.modality,
+          notes: "Agendamento aguardando confirmação de pagamento.",
+          origin: "mobile",
+        })
+        if (isAppointmentConflictError(appointmentError)) throw new AppointmentConflictError()
+        if (appointmentError) throw new Error("Não foi possível reservar esse horário.")
+        createdAppointments.push(appointmentId)
+
+        const { error: paymentError } = await admin.from("payments").insert({
+          id: paymentId,
+          appointment_id: appointmentId,
+          patient_id: patient.id,
+          professional_id: item.professionalId,
+          amount: item.price,
+          method: body.billingType === "PIX" ? "pix" : "card",
+          status: "pending",
+          reference,
+          simulated: false,
+          description: `${item.service.name}${item.appliedDiscount > 0 ? ` · desconto de associado ${quote.associate.discountPercent}%` : ""}`,
+        })
+        if (paymentError) throw new Error(paymentError.message)
+        createdPayments.push(paymentId)
+
         const result = await createAsaasCharge({
           name: patient.name,
           cpf: patient.cpf,
@@ -135,26 +175,30 @@ export async function POST(request: Request) {
           mobilePhone: patient.phone,
           patientId: patient.id,
           paymentId,
-          value: price,
+          value: item.price,
           billingType: body.billingType,
-          description: `Agendamento: ${service.name}`,
+          description: `Agendamento: ${item.service.name}`,
           externalReference: reference,
         })
         await admin.from("appointments").update({ payment_id: paymentId }).eq("id", appointmentId)
         charges.push({
           appointmentId,
           paymentId,
-          value: price,
+          value: item.price,
           billingType: body.billingType,
           invoiceUrl: result.payment.invoiceUrl || null,
           pix: result.pix ? { payload: result.pix.payload || null, encodedImage: result.pix.encodedImage || null } : null,
           pixUnavailable: result.pixUnavailable,
         })
-      } catch (error) {
-        await admin.from("payments").delete().eq("id", paymentId)
-        await admin.from("appointments").delete().eq("id", appointmentId)
-        throw error
       }
+    } catch (error) {
+      if (createdPayments.length > 0) {
+        await admin.from("payments").delete().in("id", createdPayments)
+      }
+      if (createdAppointments.length > 0) {
+        await admin.from("appointments").delete().in("id", createdAppointments)
+      }
+      throw error
     }
     return NextResponse.json({ charges, quote })
   } catch (error) {

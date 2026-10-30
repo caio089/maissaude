@@ -149,16 +149,45 @@ async function applyWebhookSideEffects(payload: AsaasWebhookPayload) {
     .from("payments")
     .update(update)
     .eq("asaas_payment_id", payment.id)
-    .select("id")
+    .select("id, appointment_id")
   if (paymentUpdateError) throw new Error("Não foi possível atualizar o pagamento confirmado.")
+
+  let appointmentIds: string[] = (linkedPayments || [])
+    .map((item) => item.appointment_id)
+    .filter((id): id is string => Boolean(id))
+
   // The webhook can arrive before charge creation has linked the Asaas ID.
   // Only use the unique reference from the payment fetched directly from Asaas.
   if (!linkedPayments?.length && payment.externalReference) {
-    const { error: referenceError } = await admin.from("payments")
+    const { data: refPayments, error: referenceError } = await admin
+      .from("payments")
       .update({ ...update, asaas_payment_id: payment.id })
       .eq("reference", payment.externalReference)
       .is("asaas_payment_id", null)
+      .select("id, appointment_id")
     if (referenceError) throw new Error("Não foi possível vincular o pagamento confirmado.")
+    appointmentIds = (refPayments || [])
+      .map((item) => item.appointment_id)
+      .filter((id): id is string => Boolean(id))
+  }
+
+  if (appointmentIds.length > 0) {
+    if (localStatus === "paid") {
+      await admin
+        .from("appointments")
+        .update({ status: "confirmed" })
+        .in("id", appointmentIds)
+        .eq("status", "scheduled")
+    } else if (localStatus === "declined" || localStatus === "refunded") {
+      await admin
+        .from("appointments")
+        .update({
+          status: "cancelled",
+          notes: `Cancelado automaticamente após pagamento ${localStatus === "refunded" ? "estornado" : "recusado"} no Asaas.`,
+        })
+        .in("id", appointmentIds)
+        .in("status", ["scheduled", "confirmed"])
+    }
   }
 
   if (payment.subscription && localStatus === "paid") {

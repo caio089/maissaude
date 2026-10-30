@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 
 import { createAsaasCharge } from "@/lib/asaas/charges"
+import { minimumAsaasCharge, minimumAsaasChargeMessage } from "@/lib/asaas/minimums"
+import { cpfDigits, formatCpf } from "@/lib/cpf"
 import { createId } from "@/lib/format"
 import { PaymentAuthorizationError, requireCurrentPatient } from "@/lib/payments/current-patient"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
@@ -53,6 +55,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Serviço sem valor configurado." }, { status: 422 })
     }
 
+    const { data: associate } = await admin
+      .from("associates")
+      .select("status")
+      .in("cpf", [cpfDigits(patient.cpf), formatCpf(patient.cpf)])
+      .maybeSingle()
+    const { data: rules } = await admin
+      .from("associate_rules")
+      .select("consultation_discount_percent")
+      .eq("id", true)
+      .maybeSingle()
+    const discount = associate?.status === "active" ? Number(rules?.consultation_discount_percent) || 0 : 0
+    const listPrice = Number(service.price)
+    const amount = Math.round(listPrice * (100 - discount)) / 100
+
+    const minimumCharge = minimumAsaasCharge(billingType)
+    if (amount < minimumCharge) {
+      return NextResponse.json({
+        error: minimumAsaasChargeMessage(billingType),
+        code: "PAYMENT_VALUE_BELOW_MINIMUM",
+        minimumCharge,
+      }, { status: 422 })
+    }
+
     const paymentId = createId("pay")
     const reference = `PG-${crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`
     const { error: paymentError } = await admin.from("payments").insert({
@@ -60,12 +85,12 @@ export async function POST(request: Request) {
       appointment_id: appointment.id,
       patient_id: patient.id,
       professional_id: appointment.professional_id,
-      amount: Number(service.price),
+      amount,
       method: billingType === "PIX" ? "pix" : "card",
       status: "pending",
       reference,
       simulated: false,
-      description: `Consulta: ${service.name}`,
+      description: `${service.name}${discount > 0 ? ` · desconto de associado ${discount}%` : ""}`,
     })
     if (paymentError) return NextResponse.json({ error: paymentError.message }, { status: 409 })
 
@@ -77,7 +102,7 @@ export async function POST(request: Request) {
         mobilePhone: patient.phone,
         patientId: patient.id,
         paymentId,
-        value: Number(service.price),
+        value: amount,
         billingType,
         description: `Consulta: ${service.name}`,
         externalReference: reference,
@@ -86,6 +111,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         paymentId,
         reference,
+        amount,
         status: result.payment.status,
         invoiceUrl: result.payment.invoiceUrl,
         pix: result.pix ? { payload: result.pix.payload, encodedImage: result.pix.encodedImage } : null,

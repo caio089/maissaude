@@ -1,3 +1,4 @@
+import { CLINIC_AUTH_EMAIL } from "@/lib/auth/constants"
 import { hmacClinicFallbackEnabled } from "@/lib/runtime"
 
 const text = new TextEncoder()
@@ -6,7 +7,7 @@ const text = new TextEncoder()
 export const CLINIC_COOKIE = "cuidar_clinica"
 export const CLINIC_COOKIE_MAX_AGE = 60 * 60 * 12
 
-const CLINIC_EMAIL = "clinica@demonstracao.demo"
+const CLINIC_EMAIL = CLINIC_AUTH_EMAIL
 const CLINIC_PASSWORD_HASH = "204fbc1887a3fedc68cdc5f761984a196a26e9e3f0b1e6312d12dfee6938df9a"
 
 function sessionSecret() {
@@ -21,7 +22,7 @@ export function clinicCookieOptions() {
     httpOnly: true,
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
-    path: "/desktop",
+    path: "/",
     maxAge: CLINIC_COOKIE_MAX_AGE,
   }
 }

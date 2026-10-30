@@ -14,7 +14,7 @@ export async function ensureClinicAuthUser() {
   const admin = createSupabaseAdmin()
   if (!admin) return { ok: false as const, message: "Service role do Supabase ainda não foi configurada." }
 
-  const password = process.env.CLINIC_DEMO_PASSWORD?.trim() || "CuidarClinica900"
+  const password = process.env.CLINIC_DEMO_PASSWORD?.trim()
   if (password) {
     const { error } = await admin.auth.admin.createUser({
       email: CLINIC_AUTH_EMAIL,

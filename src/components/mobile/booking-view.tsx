@@ -134,7 +134,7 @@ export function BookingView() {
                 toast.error(result.message)
                 return
               }
-              toast.success("Consulta reagendada na demonstração.")
+              toast.success("Consulta reagendada com sucesso.")
               router.push("/mobile/consultas")
             }}
           >

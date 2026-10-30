@@ -118,7 +118,7 @@ export function CitySheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="rounded-t-3xl">
-        <SheetHeader><SheetTitle>Cidade fictícia</SheetTitle></SheetHeader>
+        <SheetHeader><SheetTitle>Escolha sua cidade</SheetTitle></SheetHeader>
         <div className="space-y-2 px-4 pb-6">
           {DEMO_CITIES.map((item) => (
             <button key={item} type="button" onClick={() => { onSelect(item); onOpenChange(false) }} className={`block w-full rounded-2xl px-4 py-3 text-left text-sm ${item === city ? "bg-accent" : "bg-muted"}`}>

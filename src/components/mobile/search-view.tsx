@@ -41,7 +41,7 @@ export function MobileSearch() {
         <div>
           <p className="section-kicker">Catálogo</p>
           <h1 className="mt-1 text-2xl font-semibold">Buscar</h1>
-          <p className="text-sm text-muted-foreground">{results.length} {results.length === 1 ? "profissional" : "profissionais"} nesta demonstração</p>
+          <p className="text-sm text-muted-foreground">{results.length} {results.length === 1 ? "profissional encontrado" : "profissionais encontrados"}</p>
         </div>
         <Button type="button" variant="outline" size="icon" aria-label="Filtros" onClick={() => setOpen(true)}>
           <SlidersHorizontal />
@@ -54,11 +54,11 @@ export function MobileSearch() {
       <div className="mt-3 flex gap-2 overflow-x-auto phone-scroll">
         <FilterChip active={filters.modality === "all"} onClick={() => setFilters({ modality: "all" })}>Todos</FilterChip>
         <FilterChip active={filters.modality === "presencial"} onClick={() => setFilters({ modality: "presencial" })}>Presencial</FilterChip>
-        <FilterChip active={filters.modality === "teleconsulta"} onClick={() => setFilters({ modality: "teleconsulta" })}>Teleconsulta demo</FilterChip>
+        <FilterChip active={filters.modality === "teleconsulta"} onClick={() => setFilters({ modality: "teleconsulta" })}>Teleconsulta</FilterChip>
       </div>
       <div className="mt-4 space-y-3">
         {results.length === 0 ? (
-          <EmptyState icon={Search} title="Nenhum profissional encontrado" description="Altere a especialidade, o preço ou a disponibilidade para ver o catálogo de demonstração." />
+          <EmptyState icon={Search} title="Nenhum profissional encontrado" description="Altere a especialidade, o preço ou a disponibilidade para ver outros profissionais." />
         ) : results.map((professional) => (
           <Link key={professional.id} href={`/mobile/profissional/${professional.id}`} className="surface-card flex gap-3 p-4">
             <Portrait seed={professional.avatarSeed} name={professional.name} className="size-16" />
@@ -73,7 +73,7 @@ export function MobileSearch() {
       </div>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="bottom" className="rounded-t-3xl">
-          <SheetHeader><SheetTitle>Filtros da demonstração</SheetTitle></SheetHeader>
+          <SheetHeader><SheetTitle>Filtros de busca</SheetTitle></SheetHeader>
           <div className="space-y-4 px-4 pb-6">
             <Select value={filters.specialty} onValueChange={(value) => setFilters({ specialty: value as Specialty | "all" })}>
               <SelectTrigger className="h-10 w-full" aria-label="Especialidade"><SelectValue /></SelectTrigger>
@@ -93,7 +93,7 @@ export function MobileSearch() {
               </label>
             </div>
             <label className="block text-sm">
-              Avaliação mínima de demonstração
+              Avaliação mínima
               <Select value={String(filters.minRating)} onValueChange={(value) => setFilters({ minRating: Number(value) })}>
                 <SelectTrigger className="mt-1 h-10 w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>

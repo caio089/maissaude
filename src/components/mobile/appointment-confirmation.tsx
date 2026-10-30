@@ -63,11 +63,11 @@ export function AppointmentConfirmation({ onAnother }: { onAnother: () => void }
         specialtyLabel: SPECIALTY_LABEL[professional.specialty],
       }]
   const when = `${formatDate(appointment.startsAt, "EEEE, d 'de' MMMM")} às ${formatDate(appointment.startsAt, "HH:mm")}`
-  const paymentLabel = receipt.method === "pix" ? "Pix simulado" : "Cartão simulado"
+  const paymentLabel = receipt.method === "pix" ? "Pix" : "Cartão"
   const message = [
-    `Olá, ${data.clinic.name}. Confirmação de demonstração.`,
+    `Olá, ${data.clinic.name}. Confirmação de agendamento.`,
     `Paciente: ${patient.name}`,
-    `CPF fictício: ${patient.cpf}`,
+    `CPF: ${patient.cpf}`,
     ...items.map((item) => `${item.serviceName} com ${item.professionalName} · ${formatDate(item.startsAt, "dd/MM/yyyy HH:mm")}`),
     receipt.associateBenefit
       ? `Pagamento: ${paymentLabel} · ${formatMoney(receipt.amount)} com desconto de associado ${receipt.associateBenefit.discountPercent}%`
@@ -84,7 +84,7 @@ export function AppointmentConfirmation({ onAnother }: { onAnother: () => void }
       <p className="section-kicker">Pedido concluído</p>
       <h1 className="mt-2 text-3xl font-semibold tracking-tight">Pagamento confirmado</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        A reserva e o valor já estão na agenda e no financeiro da clínica, neste navegador.
+        A reserva foi confirmada e está disponível na sua conta.
       </p>
       <div className="mt-5 space-y-2 rounded-[1.6rem] bg-brand p-5 text-white">
         <p className="text-xs text-white/70">Reserva {receipt.reference}</p>
@@ -116,7 +116,7 @@ export function AppointmentConfirmation({ onAnother }: { onAnother: () => void }
         Continuar no WhatsApp
       </a>
       <p className="mt-3 text-xs leading-5 text-muted-foreground">
-        O botão abre o WhatsApp com a confirmação pronta. A mensagem só é enviada se a pessoa confirmar no aplicativo. O número da clínica é fictício.
+        O botão abre o WhatsApp com a confirmação pronta. A mensagem só é enviada se você confirmar o envio no aplicativo.
       </p>
       <Button type="button" variant="outline" className="mt-4 h-12 w-full" onClick={onAnother}>
         Voltar para o começo

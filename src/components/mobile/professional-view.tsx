@@ -25,7 +25,7 @@ export function ProfessionalView({ id }: { id: string }) {
       <EmptyState
         icon={MapPin}
         title="Profissional não encontrado"
-        description="Esse perfil não faz parte da demonstração atual."
+        description="Profissional não encontrado ou indisponível no momento."
         action={<Button asChild><Link href="/mobile/buscar">Voltar à busca</Link></Button>}
       />
     )
@@ -88,7 +88,7 @@ export function ProfessionalView({ id }: { id: string }) {
         <section className="space-y-2">
           {professional.reviews.map((review) => (
             <article key={review.id} className="rounded-2xl bg-white p-4 text-sm ring-1 ring-border">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Avaliação de demonstração</p>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Avaliação de paciente</p>
               <p className="mt-2">{review.comment}</p>
             </article>
           ))}

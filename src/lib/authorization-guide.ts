@@ -237,7 +237,7 @@ function drawFooter(context: CanvasRenderingContext2D, input: AuthorizationGuide
   )
   context.fillStyle = "#8aa0a8"
   context.font = "11px system-ui, sans-serif"
-  context.fillText("Documento fictício da demonstração CuidarSaude. Não autoriza atendimento real.", 48, warningBottom + 16)
+  context.fillText("Guia oficial emitida pelo sistema CuidarSaude. Apresente este documento no atendimento.", 48, warningBottom + 16)
   return warningBottom + 28
 }
 

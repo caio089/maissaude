@@ -200,7 +200,7 @@ export function buildNotifications(data: DemoData, now: Date): OperationalAlert[
     items.push({
       id: "notif-upcoming",
       title: `${upcoming.length} consulta${upcoming.length > 1 ? "s" : ""} nas próximas horas`,
-      body: "Confira a agenda de hoje antes de receber o paciente de demonstração.",
+      body: "Confira os horários e atendimentos agendados para hoje.",
       tone: "info",
       href: "/desktop/agenda",
     })
@@ -208,8 +208,8 @@ export function buildNotifications(data: DemoData, now: Date): OperationalAlert[
   if (pending.length > 0) {
     items.push({
       id: "notif-pending",
-      title: `${pending.length} pagamento${pending.length > 1 ? "s" : ""} simulado${pending.length > 1 ? "s" : ""} em aberto`,
-      body: "Valores pendentes desta demonstração. Nenhum cobrança real foi emitida.",
+      title: `${pending.length} pagamento${pending.length > 1 ? "s" : ""} em aberto`,
+      body: "Valores pendentes aguardando confirmação ou liquidação.",
       tone: "warning",
       href: "/desktop/financeiro",
     })
@@ -218,7 +218,7 @@ export function buildNotifications(data: DemoData, now: Date): OperationalAlert[
     items.push({
       id: "notif-noshow",
       title: `${noShows.length} falta${noShows.length > 1 ? "s" : ""} no histórico recente`,
-      body: "Essas faltas estão no histórico fictício da agenda e não geram previsão automática.",
+      body: "Essas faltas estão registradas no histórico recente da agenda.",
       tone: "warning",
       href: "/desktop/agenda",
     })
@@ -228,8 +228,8 @@ export function buildNotifications(data: DemoData, now: Date): OperationalAlert[
   ).length
   items.push({
     id: `notif-today-${toDateKey(now)}`,
-    title: todayCount > 0 ? `${todayCount} consultas na agenda de hoje` : "Agenda de hoje livre na simulação",
-    body: "Indicadores calculados a partir dos agendamentos fictícios deste navegador.",
+    title: todayCount > 0 ? `${todayCount} consultas na agenda de hoje` : "Agenda de hoje livre",
+    body: "Indicadores calculados a partir dos agendamentos da clínica.",
     tone: "success",
     href: "/desktop",
   })

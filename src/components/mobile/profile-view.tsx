@@ -4,7 +4,6 @@ import Link from "next/link"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { AssociateAccountPanel } from "@/components/mobile/associate-subscription"
-import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Portrait } from "@/components/shared/portrait"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,14 +20,12 @@ export function MobileProfile() {
   const city = useDemoStore((state) => state.mobileCity)
   const setCity = useDemoStore((state) => state.setMobileCity)
   const updateCurrentPatient = useDemoStore((state) => state.updateCurrentPatient)
-  const resetDemo = useDemoStore((state) => state.resetDemo)
   const logoutMobileAccount = useDemoStore((state) => state.logoutMobileAccount)
   const sessionPatientId = useDemoStore((state) => state.mobileSessionPatientId)
   const patient = data.patients.find((item) => item.id === sessionPatientId)
   const [name, setName] = useState(patient?.name ?? "")
   const [phone, setPhone] = useState(patient?.phone ?? "")
   const [email, setEmail] = useState(patient?.email ?? "")
-  const [confirm, setConfirm] = useState(false)
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -92,11 +89,11 @@ export function MobileProfile() {
               notes: patient.notes,
             })
             if (hasErrors(errors)) {
-              toast.error(errors.phone || errors.email || errors.name || "Mantenha dados fictícios no perfil.")
+              toast.error(errors.phone || errors.email || errors.name || "Revise os dados informados.")
               return
             }
             updateCurrentPatient({ name: name.trim(), phone: phone.trim(), email: email.trim() })
-            toast.success("Perfil fictício atualizado.")
+            toast.success("Perfil atualizado.")
           }}
         >
           Salvar dados
@@ -105,11 +102,11 @@ export function MobileProfile() {
       <section className="surface-card p-4">
         <p className="text-sm font-medium">Preferências</p>
         <label className="mt-3 flex items-center justify-between text-sm">
-          Lembretes demonstrativos
+          Lembretes de consulta
           <Switch checked={patient.reminderEnabled} onCheckedChange={(checked) => updateCurrentPatient({ reminderEnabled: checked })} />
         </label>
         <label className="mt-3 block text-sm">
-          Cidade fictícia
+          Cidade de atendimento
           <select className="mt-1 h-10 w-full rounded-lg border bg-white px-3" value={city} onChange={(event) => setCity(event.target.value)}>
             {DEMO_CITIES.map((item) => <option key={item}>{item}</option>)}
           </select>
@@ -117,11 +114,11 @@ export function MobileProfile() {
       </section>
       <section className="surface-card p-4">
         <p className="text-sm font-medium">Histórico</p>
-        <p className="mt-1 text-sm text-muted-foreground">{history} consultas neste roteiro, incluindo as criadas agora.</p>
+        <p className="mt-1 text-sm text-muted-foreground">{history} consultas registradas na sua conta.</p>
         <Button asChild variant="outline" className="mt-3"><Link href="/mobile/consultas">Abrir consultas</Link></Button>
       </section>
       <section className="space-y-2">
-        <p className="text-sm font-medium">Notificações demonstrativas</p>
+        <p className="text-sm font-medium">Avisos da sua conta</p>
         {notifications.map((item) => (
           <article key={item.id} className="rounded-2xl bg-muted px-4 py-3 text-sm">
             <p className="font-medium">{item.title}</p>
@@ -130,20 +127,6 @@ export function MobileProfile() {
         ))}
       </section>
       <Button type="button" variant="outline" className="w-full" onClick={() => { void logoutPatientAccount(); logoutMobileAccount(); toast.success("Sessão encerrada.") }}>Sair da conta</Button>
-      <Button type="button" variant="destructive" className="w-full" onClick={() => setConfirm(true)}>Sair do modo demonstração</Button>
-      <ConfirmDialog
-        open={confirm}
-        onOpenChange={setConfirm}
-        title="Reiniciar a demonstração?"
-        description="Agendamentos, pagamentos e edições feitos nesta apresentação voltam ao roteiro inicial."
-        confirmLabel="Restaurar dados"
-        destructive
-        onConfirm={() => {
-          resetDemo()
-          setConfirm(false)
-          toast.success("Demonstração restaurada.")
-        }}
-      />
     </div>
   )
 }

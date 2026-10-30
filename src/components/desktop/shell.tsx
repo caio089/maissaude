@@ -16,9 +16,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react"
-import { toast } from "sonner"
 import { Logo } from "@/components/brand/logo"
-import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Breadcrumb,
@@ -217,47 +215,29 @@ function NotificationBell() {
 
 function ClinicMenu() {
   const clinic = useDemoStore((state) => state.data.clinic)
-  const resetDemo = useDemoStore((state) => state.resetDemo)
-  const [confirm, setConfirm] = useState(false)
 
   return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" className="max-w-44">
-            <span className="truncate">{clinic.name}</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
-          <DropdownMenuLabel>
-            <span className="block">{clinic.name}</span>
-            <span className="block font-normal text-muted-foreground">{clinic.city}</span>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setConfirm(true)}>Limpar dados locais</DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={(event) => {
-              event.preventDefault()
-              void logoutClinic()
-            }}
-          >
-            Sair do painel
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <ConfirmDialog
-        open={confirm}
-        onOpenChange={setConfirm}
-        title="Limpar dados locais?"
-        description="Todos os agendamentos, pagamentos e edições salvos neste navegador serão removidos."
-        confirmLabel="Limpar dados"
-        destructive
-        onConfirm={() => {
-          resetDemo()
-          setConfirm(false)
-          toast.success("Dados locais removidos.")
-        }}
-      />
-    </>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="outline" className="max-w-44">
+          <span className="truncate">{clinic.name}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuLabel>
+          <span className="block">{clinic.name}</span>
+          <span className="block font-normal text-muted-foreground">{clinic.city}</span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.preventDefault()
+            void logoutClinic()
+          }}
+        >
+          Sair do painel
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

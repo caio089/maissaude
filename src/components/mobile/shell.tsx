@@ -62,7 +62,7 @@ function AccountGate() {
     <div className="px-5 pt-10">
       <p className="section-kicker">Aplicativo do paciente</p>
       <h1 className="mt-2 text-2xl font-semibold">Crie sua conta para continuar</h1>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">O pedido começa com CPF, nome, WhatsApp, nascimento e senha de demonstração.</p>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">O cadastro é rápido: informe seu CPF, nome, WhatsApp, data de nascimento e crie sua senha.</p>
       <Button asChild className="mt-5 h-12 w-full"><Link href="/mobile">Criar conta</Link></Button>
     </div>
   )

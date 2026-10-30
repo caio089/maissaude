@@ -52,7 +52,7 @@ export function MobileAppointments() {
           <TabsTrigger value="canceladas">Canceladas</TabsTrigger>
         </TabsList>
         <TabsContent value="proximas"><List items={upcoming} empty="Nenhuma consulta futura." onOpen={setSelectedId} /></TabsContent>
-        <TabsContent value="anteriores"><List items={previous} empty="Nenhuma consulta anterior no roteiro." onOpen={setSelectedId} /></TabsContent>
+        <TabsContent value="anteriores"><List items={previous} empty="Nenhuma consulta anterior." onOpen={setSelectedId} /></TabsContent>
         <TabsContent value="canceladas"><List items={cancelled} empty="Nenhuma consulta cancelada." onOpen={setSelectedId} /></TabsContent>
       </Tabs>
       <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelectedId(null)}>

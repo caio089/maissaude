@@ -7,8 +7,8 @@ export default function GlobalError({ reset }: { error: Error & { digest?: strin
   return (
     <div className="grid min-h-dvh place-items-center px-6 text-center">
       <div>
-        <h1 className="text-2xl font-semibold">A demonstração encontrou um erro</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Recarregue a tela ou restaure o roteiro se o estado local tiver ficado inconsistente.</p>
+        <h1 className="text-2xl font-semibold">Ocorreu um erro inesperado</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Tente recarregar a página ou voltar à tela inicial.</p>
         <div className="mt-4 flex justify-center gap-2">
           <Button type="button" onClick={reset}>Tentar de novo</Button>
           <Button asChild variant="outline"><Link href="/">Voltar ao início</Link></Button>

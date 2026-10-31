@@ -319,3 +319,92 @@ function loadOptionalLogo(src: string) {
     image.src = src
   })
 }
+
+export function printAuthorizationGuide(blob: Blob, title = "Guia de Autorização"): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof document === "undefined" || typeof URL === "undefined") {
+      resolve()
+      return
+    }
+
+    const imageUrl = URL.createObjectURL(blob)
+    const iframe = document.createElement("iframe")
+    iframe.style.position = "fixed"
+    iframe.style.right = "0"
+    iframe.style.bottom = "0"
+    iframe.style.width = "0"
+    iframe.style.height = "0"
+    iframe.style.border = "0"
+    iframe.style.display = "none"
+
+    let cleanedUp = false
+    const cleanup = () => {
+      if (cleanedUp) return
+      cleanedUp = true
+      URL.revokeObjectURL(imageUrl)
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe)
+      }
+      resolve()
+    }
+
+    iframe.onload = () => {
+      try {
+        const frameWindow = iframe.contentWindow
+        if (!frameWindow) {
+          cleanup()
+          return
+        }
+        frameWindow.focus()
+        frameWindow.print()
+        setTimeout(cleanup, 1000)
+      } catch {
+        cleanup()
+      }
+    }
+
+    document.body.appendChild(iframe)
+
+    const frameDoc = iframe.contentDocument || iframe.contentWindow?.document
+    if (!frameDoc) {
+      cleanup()
+      return
+    }
+
+    frameDoc.open()
+    frameDoc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${title}</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 8mm;
+            }
+            body {
+              margin: 0;
+              padding: 0;
+              display: flex;
+              justify-content: center;
+              align-items: flex-start;
+              background: #fff;
+            }
+            img {
+              width: 100%;
+              max-width: 100%;
+              height: auto;
+              display: block;
+            }
+          </style>
+        </head>
+        <body>
+          <img src="${imageUrl}" alt="${title}" />
+        </body>
+      </html>
+    `)
+    frameDoc.close()
+  })
+}
+

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { addDays, isSameDay, startOfWeek } from "date-fns"
 import { Ban, ChevronLeft, ChevronRight, Plus, UserPlus } from "lucide-react"
@@ -23,9 +23,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { emptyPatientForm, PatientFields, patientFormErrors } from "@/components/desktop/patient-form"
 import { formatDate, parseDateKey, timeKey, toDateKey, WEEKDAY_SHORT } from "@/lib/format"
+import { mapDbAppointment, mapDbBlockedSlot, mapDbPatient } from "@/lib/desktop-sync"
 import { availableSlots } from "@/lib/schedule"
 import { useDemoStore } from "@/lib/store"
-import { SPECIALTIES, SPECIALTY_LABEL, type AgendaView, type Appointment, type PatientInput, type Professional } from "@/lib/types"
+import { SPECIALTIES, SPECIALTY_LABEL, type AgendaView, type Appointment, type BlockedSlot, type Patient, type PatientInput, type Professional } from "@/lib/types"
 import { hasErrors } from "@/lib/validation"
 
 const PX_PER_MIN = 1.1
@@ -54,6 +55,55 @@ export function AgendaView() {
 
   const selected = storedDate ? parseDateKey(storedDate) : new Date()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [serverAppointments, setServerAppointments] = useState<Appointment[]>([])
+  const [serverPatients, setServerPatients] = useState<Patient[]>([])
+  const [serverBlockedSlots, setServerBlockedSlots] = useState<BlockedSlot[]>([])
+
+  useEffect(() => {
+    let active = true
+    fetch("/api/desktop/consultations", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return
+        const body = await response.json()
+        if (active) {
+          if (Array.isArray(body.appointments)) {
+            setServerAppointments(body.appointments.map(mapDbAppointment))
+          }
+          if (Array.isArray(body.patients)) {
+            setServerPatients(body.patients.map(mapDbPatient))
+          }
+          if (Array.isArray(body.blockedSlots)) {
+            setServerBlockedSlots(body.blockedSlots.map(mapDbBlockedSlot))
+          }
+        }
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const appointments = useMemo(() => {
+    const map = new Map<string, Appointment>()
+    for (const item of data.appointments) map.set(item.id, item)
+    for (const item of serverAppointments) map.set(item.id, item)
+    return [...map.values()]
+  }, [data.appointments, serverAppointments])
+
+  const patients = useMemo(() => {
+    const map = new Map<string, Patient>()
+    for (const item of data.patients) map.set(item.id, item)
+    for (const item of serverPatients) map.set(item.id, item)
+    return [...map.values()]
+  }, [data.patients, serverPatients])
+
+  const blockedSlots = useMemo(() => {
+    const map = new Map<string, BlockedSlot>()
+    for (const item of data.blockedSlots) map.set(item.id, item)
+    for (const item of serverBlockedSlots) map.set(item.id, item)
+    return [...map.values()]
+  }, [data.blockedSlots, serverBlockedSlots])
+
   const [createOpen, setCreateOpen] = useState(false)
   const [registering, setRegistering] = useState(false)
   const [patientForm, setPatientForm] = useState<PatientInput>(() => emptyPatientForm(data.patients))
@@ -83,14 +133,14 @@ export function AgendaView() {
     return item.active
   })
 
-  const selectedAppointment = data.appointments.find((item) => item.id === selectedId) ?? null
+  const selectedAppointment = appointments.find((item) => item.id === selectedId) ?? null
   const weekStart = startOfWeek(selected, { weekStartsOn: 0 })
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index))
   const monthStart = new Date(selected.getFullYear(), selected.getMonth(), 1)
   const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 })
   const monthCells = Array.from({ length: 42 }, (_, index) => addDays(gridStart, index))
 
-  const visibleAppointments = data.appointments.filter((item) => {
+  const visibleAppointments = appointments.filter((item) => {
     const professional = data.professionals.find((person) => person.id === item.professionalId)
     if (!professional) return false
     if (professionalId !== "all" && item.professionalId !== professionalId) return false
@@ -153,8 +203,8 @@ export function AgendaView() {
         professional: draftProfessional,
         service: draftService,
         dateKey: draft.date,
-        appointments: data.appointments,
-        blockedSlots: data.blockedSlots,
+        appointments,
+        blockedSlots,
       })
     : []
 
@@ -167,8 +217,8 @@ export function AgendaView() {
         professional: editProfessional,
         service: editService,
         dateKey: reschedule.date,
-        appointments: data.appointments,
-        blockedSlots: data.blockedSlots,
+        appointments,
+        blockedSlots,
         ignoreAppointmentId: selectedAppointment.id,
       })
     : []
@@ -249,9 +299,10 @@ export function AgendaView() {
           days={view === "week" ? weekDays : [selected]}
           professionals={view === "day" ? professionals : []}
           appointments={visibleAppointments}
-          blocks={data.blockedSlots.filter((item) => professionalId === "all" || item.professionalId === professionalId)}
+          blocks={blockedSlots.filter((item) => professionalId === "all" || item.professionalId === professionalId)}
           mode={view === "day" ? "professionals" : "days"}
           roster={data.professionals}
+          patients={patients}
           onSelectAppointment={setSelectedId}
           onCreateSlot={(nextProfessional, date, time) => openCreate({ professionalId: nextProfessional, date, time })}
           onRemoveBlock={(id) => {
@@ -266,7 +317,7 @@ export function AgendaView() {
         <div className="mt-4 divide-y">
           {dayAppointments.length === 0 ? <p className="py-6 text-sm text-muted-foreground">Nenhum agendamento neste dia com os filtros atuais.</p> : null}
           {dayAppointments.map((item) => {
-            const patient = data.patients.find((person) => person.id === item.patientId)
+            const patient = patients.find((person) => person.id === item.patientId)
             const professional = data.professionals.find((person) => person.id === item.professionalId)
             return (
               <button key={item.id} type="button" onClick={() => setSelectedId(item.id)} className="flex w-full items-center gap-4 py-3 text-left hover:bg-muted/40">
@@ -304,7 +355,7 @@ export function AgendaView() {
                     <Select value={draft.patientId} onValueChange={(value) => setDraft((current) => ({ ...current, patientId: value }))}>
                       <SelectTrigger id="agenda-patient" className="h-10 w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {data.patients.filter((item) => item.status === "active").map((item) => (
+                        {patients.filter((item) => item.status === "active").map((item) => (
                           <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
                         ))}
                       </SelectContent>
@@ -379,6 +430,7 @@ export function AgendaView() {
           {selectedAppointment ? (
             <AppointmentDetails
               appointment={selectedAppointment}
+              patients={patients}
               reschedule={reschedule}
               slots={editSlots}
               onRescheduleChange={setReschedule}
@@ -480,6 +532,7 @@ export function AgendaView() {
 
 function AppointmentDetails({
   appointment,
+  patients,
   reschedule,
   slots,
   onRescheduleChange,
@@ -490,6 +543,7 @@ function AppointmentDetails({
   onOpenPatient,
 }: {
   appointment: Appointment
+  patients: Patient[]
   reschedule: { date: string; time: string }
   slots: Array<{ time: string }>
   onRescheduleChange: (value: { date: string; time: string }) => void
@@ -500,7 +554,7 @@ function AppointmentDetails({
   onOpenPatient: () => void
 }) {
   const data = useDemoStore((state) => state.data)
-  const patient = data.patients.find((item) => item.id === appointment.patientId)
+  const patient = patients.find((item) => item.id === appointment.patientId) ?? data.patients.find((item) => item.id === appointment.patientId)
   const professional = data.professionals.find((item) => item.id === appointment.professionalId)
   const closed = appointment.status === "cancelled" || appointment.status === "completed"
 
@@ -552,6 +606,7 @@ function TimeGrid({
   blocks,
   mode,
   roster,
+  patients: propPatients,
   onSelectAppointment,
   onCreateSlot,
   onRemoveBlock,
@@ -562,11 +617,13 @@ function TimeGrid({
   blocks: Array<{ id: string; professionalId: string; startsAt: string; endsAt: string; reason: string }>
   mode: "days" | "professionals"
   roster: Professional[]
+  patients?: Patient[]
   onSelectAppointment: (id: string) => void
   onCreateSlot: (professionalId: string, date: string, time: string) => void
   onRemoveBlock: (id: string) => void
 }) {
-  const patients = useDemoStore((state) => state.data.patients)
+  const storePatients = useDemoStore((state) => state.data.patients)
+  const patients = propPatients || storePatients
   const columns = mode === "days"
     ? days.map((day) => ({ key: toDateKey(day), title: WEEKDAY_SHORT[day.getDay()] ?? "", subtitle: formatDate(day, "d"), date: day, professionalId: undefined as string | undefined }))
     : professionals.map((professional) => ({ key: professional.id, title: professional.name.replace(/^Dra?\.\s+/i, "").split(" ")[0] ?? professional.name, subtitle: SPECIALTY_LABEL[professional.specialty], date: days[0] ?? new Date(), professionalId: professional.id }))

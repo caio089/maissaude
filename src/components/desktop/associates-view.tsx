@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Copy, IdCard, Plus, Search } from "lucide-react"
 import { toast } from "sonner"
 import { AssociateRulesCard } from "@/components/desktop/associate-rules-card"
@@ -35,7 +35,32 @@ export function AssociatesView() {
   const [patientQuery, setPatientQuery] = useState("")
   const [selectedPatient, setSelectedPatient] = useState<PatientChoice | null>(null)
   const [serverPatients, setServerPatients] = useState<PatientChoice[]>([])
+  const [serverAssociates, setServerAssociates] = useState<Associate[]>([])
   const [loadingPatients, setLoadingPatients] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    fetch("/api/payments/associate", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return
+        const body = (await response.json()) as { patients?: PatientChoice[]; associates?: Associate[] }
+        if (active) {
+          if (Array.isArray(body.associates)) setServerAssociates(body.associates)
+          if (Array.isArray(body.patients)) setServerPatients(body.patients)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const allAssociates = useMemo(() => {
+    const map = new Map<string, Associate>()
+    for (const item of associates) map.set(cpfDigits(item.cpf), item)
+    for (const item of serverAssociates) map.set(cpfDigits(item.cpf), item)
+    return [...map.values()]
+  }, [associates, serverAssociates])
 
   const patientChoices = useMemo(() => {
     const all = new Map<string, PatientChoice>()
@@ -50,11 +75,11 @@ export function AssociatesView() {
 
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase()
-    if (!term) return associates
-    return associates.filter((associate) =>
+    if (!term) return allAssociates
+    return allAssociates.filter((associate) =>
       [associate.name, associate.cpf, associate.phone, associate.email].some((value) => value.toLowerCase().includes(term)),
     )
-  }, [associates, query])
+  }, [allAssociates, query])
 
   function openCreate() {
     setEditing(null)

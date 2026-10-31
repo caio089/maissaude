@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { isBefore } from "date-fns"
 import { toast } from "sonner"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatDate, formatMoney } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
-import type { Appointment } from "@/lib/types"
+import type { Appointment, Payment } from "@/lib/types"
 
 export function MobileAppointments() {
   const router = useRouter()
@@ -20,8 +20,40 @@ export function MobileAppointments() {
   const patchBooking = useDemoStore((state) => state.patchBooking)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [cancelId, setCancelId] = useState<string | null>(null)
+  const [serverAppointments, setServerAppointments] = useState<Appointment[]>([])
+  const [serverPayments, setServerPayments] = useState<Payment[]>([])
   const sessionPatientId = useDemoStore((state) => state.mobileSessionPatientId)
-  const mine = data.appointments.filter((item) => item.patientId === sessionPatientId)
+
+  useEffect(() => {
+    let active = true
+    fetch("/api/mobile/appointments", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return
+        const body = (await response.json()) as { appointments?: Appointment[]; payments?: Payment[] }
+        if (active && Array.isArray(body.appointments)) {
+          setServerAppointments(body.appointments)
+          if (Array.isArray(body.payments)) setServerPayments(body.payments)
+        }
+      })
+      .catch(() => {
+        // Fallback limpo: mantém os dados locais do useDemoStore
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const mine = useMemo(() => {
+    const map = new Map<string, Appointment>()
+    for (const item of data.appointments.filter((item) => item.patientId === sessionPatientId)) {
+      map.set(item.id, item)
+    }
+    for (const item of serverAppointments) {
+      map.set(item.id, item)
+    }
+    return [...map.values()]
+  }, [data.appointments, sessionPatientId, serverAppointments])
+
   const now = new Date()
   const upcoming = mine.filter((item) => (item.status === "scheduled" || item.status === "confirmed") && !isBefore(new Date(item.startsAt), now))
   const previous = mine.filter((item) => item.status === "completed" || item.status === "no-show" || ((item.status === "scheduled" || item.status === "confirmed") && isBefore(new Date(item.startsAt), now)))
@@ -57,7 +89,7 @@ export function MobileAppointments() {
       </Tabs>
       <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelectedId(null)}>
         <SheetContent side="bottom" className="rounded-t-3xl">
-          {selected ? <Details appointment={selected} onReschedule={() => reschedule(selected)} onCancel={() => setCancelId(selected.id)} /> : null}
+          {selected ? <Details appointment={selected} serverPayments={serverPayments} onReschedule={() => reschedule(selected)} onCancel={() => setCancelId(selected.id)} /> : null}
         </SheetContent>
       </Sheet>
       <ConfirmDialog
@@ -67,12 +99,25 @@ export function MobileAppointments() {
         description="O horário volta a ficar disponível. Para pagamentos já confirmados, entre em contato com a clínica para avaliar o estorno."
         confirmLabel="Cancelar consulta"
         destructive
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!cancelId) return
-          cancelAppointment(cancelId, "patient")
+          const idToCancel = cancelId
+          cancelAppointment(idToCancel, "patient")
+          setServerAppointments((prev) =>
+            prev.map((item) => (item.id === idToCancel ? { ...item, status: "cancelled" } : item))
+          )
           setCancelId(null)
           setSelectedId(null)
           toast.success("Consulta cancelada.")
+          try {
+            await fetch("/api/mobile/appointments", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ appointmentId: idToCancel }),
+            })
+          } catch {
+            // Continua cancelado localmente
+          }
         }}
       />
     </div>
@@ -104,10 +149,22 @@ function List({ items, empty, onOpen }: { items: Appointment[]; empty: string; o
   )
 }
 
-function Details({ appointment, onReschedule, onCancel }: { appointment: Appointment; onReschedule: () => void; onCancel: () => void }) {
+function Details({
+  appointment,
+  serverPayments,
+  onReschedule,
+  onCancel,
+}: {
+  appointment: Appointment
+  serverPayments: Payment[]
+  onReschedule: () => void
+  onCancel: () => void
+}) {
   const data = useDemoStore((state) => state.data)
   const professional = data.professionals.find((item) => item.id === appointment.professionalId)
-  const payment = data.payments.find((item) => item.id === appointment.paymentId)
+  const payment =
+    serverPayments.find((item) => item.id === appointment.paymentId) ??
+    data.payments.find((item) => item.id === appointment.paymentId)
   const canChange = appointment.status === "scheduled" || appointment.status === "confirmed"
   return (
     <>

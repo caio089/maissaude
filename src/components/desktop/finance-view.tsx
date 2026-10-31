@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { IdCard, Plus, Receipt } from "lucide-react"
 import { toast } from "sonner"
 import { MonthlyBars, RevenueArea } from "@/components/desktop/charts"
@@ -14,9 +14,10 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatDate, formatMoney, toDateKey } from "@/lib/format"
+import { mapDbAppointment, mapDbPayment, mapDbPatient } from "@/lib/desktop-sync"
 import { computeDashboard, sumAmount } from "@/lib/metrics"
 import { useDemoStore } from "@/lib/store"
-import type { Associate, CashCategory, CashEntry, CashKind, Payment, PaymentStatus } from "@/lib/types"
+import type { Appointment, Associate, CashCategory, CashEntry, CashKind, Patient, Payment, PaymentStatus } from "@/lib/types"
 
 const INCOME_CATEGORIES: CashCategory[] = ["consulta", "mensalidade", "exame", "outro"]
 const EXPENSE_CATEGORIES: CashCategory[] = ["aluguel", "salario", "material", "transporte", "outro"]
@@ -41,16 +42,65 @@ export function FinanceView() {
   const [filter, setFilter] = useState<PaymentStatus | "all">("all")
   const [receipt, setReceipt] = useState<Payment | null>(null)
   const [formOpen, setFormOpen] = useState(false)
+  const [serverPayments, setServerPayments] = useState<Payment[]>([])
+  const [serverAppointments, setServerAppointments] = useState<Appointment[]>([])
+  const [serverPatients, setServerPatients] = useState<Patient[]>([])
+
+  useEffect(() => {
+    let active = true
+    fetch("/api/desktop/consultations", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return
+        const body = await response.json()
+        if (active) {
+          if (Array.isArray(body.payments)) {
+            setServerPayments(body.payments.map(mapDbPayment))
+          }
+          if (Array.isArray(body.appointments)) {
+            setServerAppointments(body.appointments.map(mapDbAppointment))
+          }
+          if (Array.isArray(body.patients)) {
+            setServerPatients(body.patients.map(mapDbPatient))
+          }
+        }
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const mergedData = useMemo(() => {
+    const paymentMap = new Map<string, Payment>()
+    for (const item of data.payments) paymentMap.set(item.id, item)
+    for (const item of serverPayments) paymentMap.set(item.id, item)
+
+    const appointmentMap = new Map<string, Appointment>()
+    for (const item of data.appointments) appointmentMap.set(item.id, item)
+    for (const item of serverAppointments) appointmentMap.set(item.id, item)
+
+    const patientMap = new Map<string, Patient>()
+    for (const item of data.patients) patientMap.set(item.id, item)
+    for (const item of serverPatients) patientMap.set(item.id, item)
+
+    return {
+      ...data,
+      payments: [...paymentMap.values()],
+      appointments: [...appointmentMap.values()],
+      patients: [...patientMap.values()],
+    }
+  }, [data, serverPayments, serverAppointments, serverPatients])
+
   const now = useMemo(() => new Date(), [])
-  const metrics = computeDashboard(data, "month", now)
+  const metrics = computeDashboard(mergedData, "month", now)
   const month = monthKey(now)
   const manualIncome = sumEntries(cashEntries, "income", month)
   const manualExpense = sumEntries(cashEntries, "expense", month)
   const membershipIncome = membershipForMonth(associates, associateFee, month)
   const monthRevenue = metrics.revenue + manualIncome + membershipIncome
   const balance = monthRevenue - manualExpense
-  const pending = sumAmount(data.payments.filter((item) => item.status === "pending"))
-  const rows = data.payments.filter((item) => filter === "all" || item.status === filter)
+  const pending = sumAmount(mergedData.payments.filter((item) => item.status === "pending"))
+  const rows = mergedData.payments.filter((item) => filter === "all" || item.status === filter)
   const series = withManualIncome(metrics.series, cashEntries, associates, associateFee, now)
   const monthly = withManualMonthly(metrics.monthly, cashEntries, associates, associateFee, now)
 
@@ -125,7 +175,7 @@ export function FinanceView() {
             </TableHeader>
             <TableBody>
               {rows.map((payment) => {
-                const patient = data.patients.find((item) => item.id === payment.patientId)
+                const patient = mergedData.patients.find((item) => item.id === payment.patientId)
                 return (
                   <TableRow key={payment.id}>
                     <TableCell className="font-medium">{payment.reference}</TableCell>
@@ -148,7 +198,7 @@ export function FinanceView() {
           </Table>
         )}
       </div>
-      <ReceiptDialog payment={receipt} onOpenChange={(open) => !open && setReceipt(null)} />
+      <ReceiptDialog payment={receipt} patients={mergedData.patients} onOpenChange={(open) => !open && setReceipt(null)} />
       <CashEntryDialog open={formOpen} onOpenChange={setFormOpen} />
     </FadeIn>
   )
@@ -303,9 +353,9 @@ function CashEntryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
   )
 }
 
-function ReceiptDialog({ payment, onOpenChange }: { payment: Payment | null; onOpenChange: (open: boolean) => void }) {
+function ReceiptDialog({ payment, patients, onOpenChange }: { payment: Payment | null; patients?: Patient[]; onOpenChange: (open: boolean) => void }) {
   const data = useDemoStore((state) => state.data)
-  const patient = data.patients.find((item) => item.id === payment?.patientId)
+  const patient = (patients || data.patients).find((item) => item.id === payment?.patientId)
   const professional = data.professionals.find((item) => item.id === payment?.professionalId)
   return (
     <Dialog open={Boolean(payment)} onOpenChange={onOpenChange}>
@@ -314,7 +364,7 @@ function ReceiptDialog({ payment, onOpenChange }: { payment: Payment | null; onO
         </div>
         <DialogHeader>
           <DialogTitle>Comprovante</DialogTitle>
-          <DialogDescription>Sem valor fiscal. Este documento existe só para a apresentação.</DialogDescription>
+          <DialogDescription>Comprovante de pagamento registrado no sistema.</DialogDescription>
         </DialogHeader>
         {payment ? (
           <dl className="relative space-y-2 text-sm">

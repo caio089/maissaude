@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { isSameDay } from "date-fns"
 import { CalendarDays, IdCard, Users, Wallet } from "lucide-react"
 import { AppointmentBars, RevenueArea } from "@/components/desktop/charts"
@@ -9,9 +9,10 @@ import { FadeIn } from "@/components/shared/fade-in"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { Progress } from "@/components/ui/progress"
 import { formatDate, formatMoney, greeting, percent } from "@/lib/format"
+import { mapDbAppointment, mapDbPayment, mapDbPatient } from "@/lib/desktop-sync"
 import { buildNotifications, computeDashboard } from "@/lib/metrics"
 import { useDemoStore } from "@/lib/store"
-import type { DashboardPeriod } from "@/lib/types"
+import type { Appointment, DashboardPeriod, Patient, Payment } from "@/lib/types"
 
 const PERIODS: Array<{ id: DashboardPeriod; label: string }> = [
   { id: "7d", label: "7 dias" },
@@ -26,11 +27,54 @@ export function DashboardView() {
   const period = useDemoStore((state) => state.dashboardPeriod)
   const setPeriod = useDemoStore((state) => state.setDashboardPeriod)
   const [chart, setChart] = useState<"revenue" | "appointments">("revenue")
+  const [serverPayments, setServerPayments] = useState<Payment[]>([])
+  const [serverAppointments, setServerAppointments] = useState<Appointment[]>([])
+  const [serverPatients, setServerPatients] = useState<Patient[]>([])
+
+  useEffect(() => {
+    let active = true
+    fetch("/api/desktop/consultations", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return
+        const body = await response.json()
+        if (active) {
+          if (Array.isArray(body.payments)) setServerPayments(body.payments.map(mapDbPayment))
+          if (Array.isArray(body.appointments)) setServerAppointments(body.appointments.map(mapDbAppointment))
+          if (Array.isArray(body.patients)) setServerPatients(body.patients.map(mapDbPatient))
+        }
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const mergedData = useMemo(() => {
+    const paymentMap = new Map<string, Payment>()
+    for (const item of data.payments) paymentMap.set(item.id, item)
+    for (const item of serverPayments) paymentMap.set(item.id, item)
+
+    const appointmentMap = new Map<string, Appointment>()
+    for (const item of data.appointments) appointmentMap.set(item.id, item)
+    for (const item of serverAppointments) appointmentMap.set(item.id, item)
+
+    const patientMap = new Map<string, Patient>()
+    for (const item of data.patients) patientMap.set(item.id, item)
+    for (const item of serverPatients) patientMap.set(item.id, item)
+
+    return {
+      ...data,
+      payments: [...paymentMap.values()],
+      appointments: [...appointmentMap.values()],
+      patients: [...patientMap.values()],
+    }
+  }, [data, serverPayments, serverAppointments, serverPatients])
+
   const now = useMemo(() => new Date(), [])
-  const metrics = computeDashboard(data, period, now)
-  const alerts = buildNotifications(data, now).slice(0, 3)
+  const metrics = computeDashboard(mergedData, period, now)
+  const alerts = buildNotifications(mergedData, now).slice(0, 3)
   const activeAssociates = associates.filter((item) => item.status === "active").length
-  const today = data.appointments
+  const today = mergedData.appointments
     .filter((item) => item.status !== "cancelled" && isSameDay(new Date(item.startsAt), now))
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
 
@@ -107,7 +151,7 @@ export function DashboardView() {
           <ol className="mt-4 space-y-3">
             {today.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma consulta para hoje.</p> : null}
             {today.map((item) => {
-              const patient = data.patients.find((person) => person.id === item.patientId)
+              const patient = mergedData.patients.find((person) => person.id === item.patientId)
               const professional = data.professionals.find((person) => person.id === item.professionalId)
               return (
                 <li key={item.id} className="flex gap-3 rounded-2xl bg-muted/60 px-3 py-2.5">

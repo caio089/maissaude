@@ -13,17 +13,25 @@ export async function GET() {
   if (!(await hasClinicSession())) return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
   const db = createSupabaseAdmin()
   if (!db) return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
-  const [patients, professionals, services, appointments, payments] = await Promise.all([
+  const [patients, professionals, services, appointments, payments, blockedSlots] = await Promise.all([
     db.from("patients").select("id,name,cpf,phone,email,status").eq("status", "active").order("name"),
     db.from("professionals").select("id,name,active").eq("active", true).order("name"),
     db.from("professional_services").select("id,professional_id,name,price,duration_min,modality"),
-    db.from("appointments").select("id,patient_id,professional_id,service_id,starts_at,status,payment_id").order("starts_at", { ascending: false }).limit(100),
-    db.from("payments").select("id,status,amount,method,invoice_url,pix_payload").order("created_at", { ascending: false }).limit(500),
+    db.from("appointments").select("id,patient_id,professional_id,service_id,starts_at,ends_at,status,modality,notes,origin,payment_id,created_at").order("starts_at", { ascending: false }).limit(200),
+    db.from("payments").select("id,appointment_id,patient_id,professional_id,amount,method,status,reference,simulated,description,created_at,paid_at,invoice_url,pix_payload").order("created_at", { ascending: false }).limit(500),
+    db.from("blocked_slots").select("id,professional_id,starts_at,ends_at,reason,origin").limit(200),
   ])
   if ([patients, professionals, services, appointments, payments].some((result) => result.error)) {
     return NextResponse.json({ error: "Não foi possível carregar as consultas." }, { status: 500 })
   }
-  return NextResponse.json({ patients: patients.data, professionals: professionals.data, services: services.data, appointments: appointments.data, payments: payments.data })
+  return NextResponse.json({
+    patients: patients.data,
+    professionals: professionals.data,
+    services: services.data,
+    appointments: appointments.data,
+    payments: payments.data,
+    blockedSlots: blockedSlots.data || [],
+  })
 }
 
 export async function POST(request: Request) {

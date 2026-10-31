@@ -21,9 +21,17 @@ export async function GET() {
   if (!(await hasClinicSession())) return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
   const admin = createSupabaseAdmin()
   if (!admin) return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
-  const { data, error } = await admin.from("patients").select("id,name,cpf,phone,email,status").eq("status", "active").order("name")
-  if (error) return NextResponse.json({ error: "Não foi possível carregar os pacientes." }, { status: 500 })
-  return NextResponse.json({ patients: data })
+  const [patientsResult, associatesResult, rulesResult] = await Promise.all([
+    admin.from("patients").select("id,name,cpf,phone,email,status").eq("status", "active").order("name"),
+    admin.from("associates").select("id,name,cpf,phone,email,status,created_at").order("name"),
+    admin.from("associate_rules").select("*").eq("id", true).maybeSingle(),
+  ])
+  if (patientsResult.error) return NextResponse.json({ error: "Não foi possível carregar os pacientes." }, { status: 500 })
+  return NextResponse.json({
+    patients: patientsResult.data,
+    associates: associatesResult.data || [],
+    rules: rulesResult.data || null,
+  })
 }
 
 export async function POST(request: Request) {

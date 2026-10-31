@@ -118,7 +118,7 @@ export interface Payment {
   createdAt: string
   paidAt?: string
   reference: string
-  simulated: true
+  simulated?: boolean
   description: string
 }
 

@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { ProfessionalView } from "@/components/mobile/professional-view"
 
 export const metadata: Metadata = { title: "Profissional" }
+export const instant = false
 
 export default function ProfessionalPage({ params }: { params: Promise<{ id: string }> }) {
   return (

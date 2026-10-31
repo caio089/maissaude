@@ -4,6 +4,7 @@ import { UpdatePasswordForm } from "@/components/auth/update-password-form"
 import { currentAuthRole } from "@/lib/auth/role"
 
 export const metadata: Metadata = { title: "Nova senha" }
+export const instant = false
 
 export default async function UpdatePasswordPage() {
   if (!(await currentAuthRole())) redirect("/auth/recuperar")

@@ -9,7 +9,7 @@ import {
   subDays,
 } from "date-fns"
 import { formatDate, toDateKey } from "@/lib/format"
-import type { Appointment, DashboardPeriod, DemoData, Payment } from "@/lib/types"
+import type { DashboardPeriod, DemoData, Payment } from "@/lib/types"
 
 export interface DateRange {
   start: Date

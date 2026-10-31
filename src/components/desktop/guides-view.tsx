@@ -1,11 +1,13 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { GuideExportDialog, type GuideDialogItem } from "@/components/desktop/guide-export-dialog"
 
-type Patient = { id: string; name: string; cpf: string }
-type Guide = { id: string; issuedAt: string; valid: boolean; appointmentStatus: string | null; startsAt: string | null; patient: Patient | null; professional: string; service: string; paymentStatus: string }
+type Patient = { id: string; name: string; cpf: string; birthDate?: string }
+type Guide = GuideDialogItem
 const date = (value: string) => new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Fortaleza" }).format(new Date(value))
 
 export function GuidesView() {
@@ -14,6 +16,7 @@ export function GuidesView() {
   const [selected, setSelected] = useState<Patient | null>(null)
   const [guideNumber, setGuideNumber] = useState("")
   const [guides, setGuides] = useState<Guide[]>([])
+  const [exportGuide, setExportGuide] = useState<GuideDialogItem | null>(null)
   const [error, setError] = useState("")
   const [patientError, setPatientError] = useState("")
   const [searchingPatients, setSearchingPatients] = useState(false)
@@ -88,14 +91,37 @@ export function GuidesView() {
     <section className="space-y-3 rounded-2xl border bg-card p-5">
       <h2 className="text-lg font-semibold">{selected ? `Guias de ${selected.name}` : "Guias"}</h2>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {loading ? <p className="text-sm text-muted-foreground">Carregando...</p> : !error && guides.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma guia encontrada.</p> : guides.map((guide) => <article key={guide.id} className="space-y-1 rounded-lg border p-4 text-sm">
+      {loading ? <p className="text-sm text-muted-foreground">Carregando...</p> : !error && guides.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma guia encontrada.</p> : guides.map((guide) => <article key={guide.id} className="space-y-2 rounded-lg border p-4 text-sm">
         <div className="flex flex-wrap justify-between gap-2"><p className="font-semibold">{guide.patient?.name || "Paciente indisponível"} · {guide.service}</p><span className={guide.valid ? "font-medium text-emerald-700" : "font-medium text-red-700"}>{guide.valid ? "Válida" : "Não válida"}</span></div>
         <p>Número: <span className="font-mono">{guide.id}</span></p>
         <p className="text-muted-foreground">CPF: {guide.patient?.cpf || "indisponível"} · {guide.professional}</p>
         <p className="text-muted-foreground">Consulta: {guide.startsAt ? date(guide.startsAt) : "indisponível"} · Emitida: {date(guide.issuedAt)}</p>
         {!guide.valid && <p className="text-red-700">Pagamento: {guide.paymentStatus} · Consulta: {guide.appointmentStatus || "indisponível"}</p>}
+        <div className="flex items-center justify-between border-t pt-2 mt-2">
+          <span className="text-xs text-muted-foreground">
+            {guide.valid ? "Guia liberada para atendimento" : "Aguardando confirmação"}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs font-medium"
+            onClick={() => setExportGuide(guide)}
+          >
+            <Download className="h-3.5 w-3.5 text-teal" />
+            Exportar guia
+          </Button>
+        </div>
       </article>)}
       {guides.length === 100 && <p className="text-xs text-muted-foreground">Exibindo as 100 guias mais recentes. Use a busca para refinar.</p>}
     </section>
+    <GuideExportDialog
+      open={Boolean(exportGuide)}
+      onOpenChange={(open) => {
+        if (!open) setExportGuide(null)
+      }}
+      guide={exportGuide}
+    />
   </div>
 }
+

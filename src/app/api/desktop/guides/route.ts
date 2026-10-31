@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { hasClinicSession } from "@/lib/clinic-session"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
-import { SPECIALTY_LABEL, type SpecialtyKey } from "@/lib/types"
+import { SPECIALTY_LABEL, type Specialty } from "@/lib/types"
 import type { AuthorizationGuideInput } from "@/lib/authorization-guide"
 
 const DEFAULT_CLINIC = {
@@ -68,8 +68,9 @@ export async function GET(request: Request) {
       const service = services.data.find((item) => item.id === appointment?.service_id)
       const valid = Boolean(appointment && appointment.status !== "cancelled" && appointment.payment_id === guide.payment_id && payment?.status === "paid" && !payment.simulated && payment.asaas_payment_id)
 
-      const specialtyKey = (professional?.specialty || "clinica-geral") as SpecialtyKey
-      const specialtyLabel = SPECIALTY_LABEL[specialtyKey] || "Clínica geral"
+      const specialty = (professional?.specialty && professional.specialty in SPECIALTY_LABEL ? professional.specialty : "clinica-geral") as Specialty
+      const specialtyLabel = SPECIALTY_LABEL[specialty] || "Clínica geral"
+
 
       const guideInput: AuthorizationGuideInput = {
         reference: guide.id,

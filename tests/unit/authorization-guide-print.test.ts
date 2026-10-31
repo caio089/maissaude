@@ -49,12 +49,12 @@ describe("printAuthorizationGuide", () => {
         return {}
       }),
       body: {
-        appendChild: vi.fn((node: typeof mockIframe) => {
+        appendChild: vi.fn((node: any) => {
           node.parentNode = mockDoc.body
           triggerOnload = node.onload
           return node
         }),
-        removeChild: vi.fn((node: typeof mockIframe) => {
+        removeChild: vi.fn((node: any) => {
           node.parentNode = null
           return node
         }),

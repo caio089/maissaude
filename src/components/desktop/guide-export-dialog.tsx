@@ -130,45 +130,57 @@ export function GuideExportDialog({ open, onOpenChange, guide }: GuideExportDial
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex flex-col max-h-[92vh] sm:max-h-[88vh] max-w-2xl p-0 gap-0 overflow-hidden shadow-2xl">
+        <DialogHeader className="p-4 sm:p-6 pb-3 border-b flex-shrink-0 bg-background">
           <div className="flex flex-wrap items-center justify-between gap-2 pr-6">
-            <DialogTitle className="text-xl">Exportar Guia de Autorização</DialogTitle>
+            <DialogTitle className="text-lg sm:text-xl font-semibold">Exportar Guia de Autorização</DialogTitle>
             <span
-              className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+              className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
                 guide.valid ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"
               }`}
             >
               {guide.valid ? "Guia Válida" : "Guia Não Válida"}
             </span>
           </div>
-          <DialogDescription>
+          <DialogDescription className="text-xs sm:text-sm text-muted-foreground mt-1">
             {guide.patient?.name ? `Paciente: ${guide.patient.name} · ` : ""}
             {credentials ? `Guia nº ${credentials.number} (senha: ${credentials.password})` : `ID: ${guide.id}`}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="my-2 flex min-h-64 flex-col items-center justify-center rounded-xl border bg-muted/30 p-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 flex flex-col items-center justify-center bg-muted/20">
           {generating ? (
-            <div className="flex flex-col items-center gap-2 py-12 text-sm text-muted-foreground">
-              <Loader2 className="h-6 w-6 animate-spin text-teal" />
-              <p>Gerando guia oficial em alta resolução...</p>
+            <div className="flex flex-col items-center justify-center gap-3 py-14 text-sm text-muted-foreground" role="status" aria-live="polite">
+              <Loader2 className="h-7 w-7 animate-spin text-teal" />
+              <p className="font-medium">Gerando guia oficial em alta resolução...</p>
+              <span className="sr-only">Carregando visualização da guia</span>
             </div>
           ) : previewUrl ? (
-            <div className="w-full max-w-lg overflow-hidden rounded-lg border bg-white shadow-sm">
-              <img
-                src={previewUrl}
-                alt={`Guia de autorização ${credentials?.number || guide.id}`}
-                className="w-full object-contain"
-              />
+            <div className="flex w-full items-center justify-center">
+              <div className="relative max-h-[48vh] sm:max-h-[54vh] max-w-full overflow-hidden rounded-lg border bg-white shadow-sm transition-transform hover:shadow-md">
+                <img
+                  src={previewUrl}
+                  alt={`Guia de autorização ${credentials?.number || guide.id} do paciente ${guide.patient?.name || ""}`}
+                  className="max-h-[48vh] sm:max-h-[54vh] w-auto max-w-full object-contain"
+                />
+              </div>
             </div>
           ) : (
-            <p className="text-sm text-destructive">Falha ao carregar a pré-visualização.</p>
+            <div className="py-10 text-center" role="alert">
+              <p className="text-sm font-medium text-destructive">Falha ao carregar a pré-visualização.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Tente fechar e abrir novamente a exportação.</p>
+            </div>
           )}
         </div>
 
-        <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="p-4 sm:px-6 border-t bg-background flex-shrink-0 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            aria-label="Fechar janela"
+            className="w-full sm:w-auto"
+          >
             Fechar
           </Button>
           <Button
@@ -176,7 +188,8 @@ export function GuideExportDialog({ open, onOpenChange, guide }: GuideExportDial
             variant="outline"
             disabled={!blob || generating || printing}
             onClick={handlePrint}
-            className="gap-1.5"
+            aria-label="Imprimir guia ou salvar como PDF"
+            className="gap-1.5 w-full sm:w-auto"
           >
             {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
             Imprimir / Salvar PDF
@@ -185,7 +198,8 @@ export function GuideExportDialog({ open, onOpenChange, guide }: GuideExportDial
             type="button"
             disabled={!blob || generating}
             onClick={handleDownload}
-            className="gap-1.5 bg-teal text-white hover:bg-teal/90"
+            aria-label="Baixar guia como imagem PNG"
+            className="gap-1.5 bg-teal text-white hover:bg-teal/90 w-full sm:w-auto shadow-sm"
           >
             <Download className="h-4 w-4" />
             Baixar imagem (PNG)

@@ -7,7 +7,7 @@ import { CalendarDays, House, Search, UserRound } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { useDemoStore } from "@/lib/store"
-import type { Professional } from "@/lib/types"
+import type { Appointment, BlockedSlot, Professional } from "@/lib/types"
 
 const ITEMS = [
   { href: "/mobile", label: "Início", icon: House },
@@ -19,30 +19,39 @@ const ITEMS = [
 export function MobileShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const sessionId = useDemoStore((state) => state.mobileSessionPatientId)
-  const replaceProfessionals = useDemoStore((state) => state.replaceProfessionals)
+  const syncCatalogAvailability = useDemoStore((state) => state.syncCatalogAvailability)
   const logoutMobileAccount = useDemoStore((state) => state.logoutMobileAccount)
   const needsAccount = !sessionId && pathname !== "/mobile"
 
   useEffect(() => {
-    if (!sessionId) return
     const controller = new AbortController()
     void fetch("/api/mobile/catalog", { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
-        const body = await response.json() as { professionals?: Professional[]; error?: string }
-        if (response.status === 401) {
+        if (response.status === 401 && sessionId) {
           logoutMobileAccount()
           toast.error("Sua sessão expirou. Entre novamente para continuar.")
           return
         }
-        if (!response.ok || !body.professionals) throw new Error(body.error || "Não foi possível carregar o catálogo.")
-        replaceProfessionals(body.professionals)
+        if (!response.ok) return
+        const body = (await response.json()) as {
+          professionals?: Professional[]
+          busyAppointments?: Appointment[]
+          blockedSlots?: BlockedSlot[]
+          error?: string
+        }
+        if (body.professionals) {
+          syncCatalogAvailability({
+            professionals: body.professionals,
+            busyAppointments: body.busyAppointments,
+            blockedSlots: body.blockedSlots,
+          })
+        }
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
-        toast.error(error instanceof Error ? error.message : "Não foi possível carregar o catálogo.")
       })
     return () => controller.abort()
-  }, [logoutMobileAccount, replaceProfessionals, sessionId])
+  }, [logoutMobileAccount, syncCatalogAvailability, sessionId])
 
   return (
     <div className="min-h-dvh bg-[radial-gradient(circle_at_top,#e7f4f2,#d5e1e6)] md:grid md:place-items-center md:p-6">

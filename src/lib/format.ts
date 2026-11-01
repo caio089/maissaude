@@ -11,8 +11,10 @@ export function formatMoney(value: number) {
   return moneyFormatter.format(value)
 }
 
-export function formatDate(value: Date | string, pattern: string) {
+export function formatDate(value: Date | string | null | undefined, pattern: string) {
+  if (!value) return "—"
   const date = typeof value === "string" ? new Date(value) : value
+  if (!date || isNaN(date.getTime())) return "—"
   return format(date, pattern, { locale: ptBR })
 }
 

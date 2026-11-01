@@ -120,6 +120,8 @@ export interface Payment {
   reference: string
   simulated?: boolean
   description: string
+  invoiceUrl?: string
+  pixPayload?: string
 }
 
 export interface PrescriptionItem {

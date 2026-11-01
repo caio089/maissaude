@@ -17,6 +17,7 @@ import {
   type AgendaView,
   type Appointment,
   type AppointmentInput,
+  type BlockedSlot,
   type Associate,
   type AssociateInput,
   type AssociateRules,
@@ -76,6 +77,7 @@ export interface DemoStore {
   logoutMobileAccount: () => void
   adoptPatientSession: (patient: Patient) => void
   replaceProfessionals: (professionals: Professional[]) => void
+  syncCatalogAvailability: (payload: { professionals?: Professional[]; busyAppointments?: Appointment[]; blockedSlots?: BlockedSlot[] }) => void
   clearCheckout: () => void
   markNotificationsRead: () => void
   createPatient: (input: PatientInput) => string
@@ -302,6 +304,30 @@ export const useDemoStore = create<DemoStore>()(
         }),
       replaceProfessionals: (professionals) =>
         set((state) => ({ data: { ...state.data, professionals } })),
+      syncCatalogAvailability: ({ professionals, busyAppointments, blockedSlots }) =>
+        set((state) => {
+          const nextProfessionals = professionals ?? state.data.professionals
+          const nextBlockedSlots = blockedSlots ?? state.data.blockedSlots
+          let nextAppointments = state.data.appointments
+          if (Array.isArray(busyAppointments)) {
+            const busyMap = new Map<string, Appointment>()
+            for (const item of busyAppointments) busyMap.set(item.id, item)
+            for (const item of state.data.appointments) {
+              if (item.patientId && item.patientId === state.mobileSessionPatientId) {
+                busyMap.set(item.id, item)
+              }
+            }
+            nextAppointments = [...busyMap.values()]
+          }
+          return {
+            data: {
+              ...state.data,
+              professionals: nextProfessionals,
+              appointments: nextAppointments,
+              blockedSlots: nextBlockedSlots,
+            },
+          }
+        }),
       clearCheckout: () => set({ lastCheckout: null, booking: emptyBooking() }),
       markNotificationsRead: () =>
         set((state) => ({

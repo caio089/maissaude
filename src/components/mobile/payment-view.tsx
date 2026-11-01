@@ -11,7 +11,10 @@ export function PaymentView() {
       <p className="mt-2 text-sm leading-6 text-muted-foreground">
         Escolha o atendimento e o horário. No fim do carrinho, o sistema gera um Pix real da Asaas para cada atendimento.
       </p>
-      <Button asChild className="mt-5 h-12"><Link href="/mobile">Abrir atendimentos</Link></Button>
+      <div className="mt-5 space-y-2">
+        <Button asChild className="h-12 w-full"><Link href="/mobile">Abrir atendimentos</Link></Button>
+        <Button asChild variant="outline" className="h-12 w-full"><Link href="/mobile/consultas">Minhas consultas</Link></Button>
+      </div>
     </div>
   )
 }

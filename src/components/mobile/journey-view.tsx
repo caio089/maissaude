@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import { BadgeCheck, CreditCard, Eye, EyeOff, Loader2, QrCode } from "lucide-react"
+import { ArrowLeft, BadgeCheck, CreditCard, Eye, EyeOff, Loader2, QrCode } from "lucide-react"
 import { toast } from "sonner"
 import { AppointmentConfirmation } from "@/components/mobile/appointment-confirmation"
 import { AssociatePitch } from "@/components/mobile/associate-subscription"
@@ -243,7 +243,7 @@ function ConfirmStep({
 
   return (
     <div className="px-4 pt-6 pb-8">
-      <button type="button" onClick={onBack} className="text-sm text-teal">Voltar ao carrinho</button>
+      <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-medium text-teal hover:underline"><ArrowLeft className="size-4" /> Voltar ao carrinho</button>
       <div className="mt-3">
         <FlowSteps steps={["Carrinho", "Confirmar", "Pagar"]} current={1} />
       </div>
@@ -275,9 +275,14 @@ function ConfirmStep({
         <p className="text-sm text-white/70">{discount > 0 ? `De ${formatMoney(listTotal)} com desconto de associado` : `${cart.length} ${cart.length === 1 ? "item" : "itens"}`}</p>
         <p className="text-2xl font-semibold">{formatMoney(total)}</p>
       </div>
-      <Button type="button" className="mt-5 h-12 w-full" disabled={cart.length === 0} onClick={onContinue}>
-        Confirmar e pagar
-      </Button>
+      <div className="mt-5 flex gap-2">
+        <Button type="button" variant="outline" className="h-12 flex-1" onClick={onBack}>
+          Voltar
+        </Button>
+        <Button type="button" className="h-12 flex-1" disabled={cart.length === 0} onClick={onContinue}>
+          Confirmar e pagar
+        </Button>
+      </div>
     </div>
   )
 }
@@ -350,7 +355,7 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
 
   return (
     <section className="px-4 pt-6 pb-8">
-      <button type="button" onClick={onBack} className="text-sm text-teal">Voltar para a confirmação</button>
+      <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-medium text-teal hover:underline"><ArrowLeft className="size-4" /> Voltar para a confirmação</button>
       <div className="mt-3">
         <FlowSteps steps={["Carrinho", "Confirmar", "Pagar"]} current={2} />
       </div>
@@ -415,10 +420,15 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
             </button>
           </div>
           {billingType && belowPaymentMinimum ? <p role="alert" className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{minimumAsaasChargeMessage(billingType)} Ajuste o valor no painel da clínica.</p> : null}
-          <Button type="button" className="mt-4 h-12 w-full" disabled={processing || !billingType || !quote || cart.length === 0 || belowPaymentMinimum} onClick={() => void pay()}>
-            {processing ? <Loader2 className="animate-spin" /> : null}
-            {billingType === "PIX" ? "Gerar Pix" : billingType === "CREDIT_CARD" ? "Continuar para o cartão" : "Escolha a forma de pagamento"}
-          </Button>
+          <div className="mt-4 flex gap-2">
+            <Button type="button" variant="outline" className="h-12 flex-1" onClick={onBack}>
+              Voltar
+            </Button>
+            <Button type="button" className="h-12 flex-1" disabled={processing || !billingType || !quote || cart.length === 0 || belowPaymentMinimum} onClick={() => void pay()}>
+              {processing ? <Loader2 className="animate-spin" /> : null}
+              {billingType === "PIX" ? "Gerar Pix" : billingType === "CREDIT_CARD" ? "Pagar com cartão" : "Escolha o pagamento"}
+            </Button>
+          </div>
         </section>
       ) : null}
 
@@ -434,6 +444,14 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
             </section>
           ))}
           <p className="text-center text-sm text-muted-foreground">Após o pagamento, a Asaas confirma automaticamente a cobrança.</p>
+          <div className="space-y-2 pt-3">
+            <Button asChild className="h-12 w-full bg-teal text-white hover:bg-teal/90">
+              <Link href="/mobile/consultas">Ir para Minhas Consultas</Link>
+            </Button>
+            <Button type="button" variant="outline" className="h-12 w-full" onClick={onBack}>
+              Voltar ao pedido
+            </Button>
+          </div>
         </div>
       ) : null}
     </section>

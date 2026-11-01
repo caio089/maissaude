@@ -18,6 +18,23 @@ export function BookingView() {
   const booking = useDemoStore((state) => state.booking)
   const patchBooking = useDemoStore((state) => state.patchBooking)
   const confirmReschedule = useDemoStore((state) => state.confirmReschedule)
+  const syncCatalogAvailability = useDemoStore((state) => state.syncCatalogAvailability)
+
+  useEffect(() => {
+    fetch("/api/mobile/catalog", { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) return
+        const body = await res.json()
+        if (body.professionals) {
+          syncCatalogAvailability({
+            professionals: body.professionals,
+            busyAppointments: body.busyAppointments,
+            blockedSlots: body.blockedSlots,
+          })
+        }
+      })
+      .catch(() => {})
+  }, [syncCatalogAvailability])
   const now = useMemo(() => new Date(), [])
   const initial = !booking.professionalId ? 0 : !booking.serviceId ? 1 : !booking.date ? 2 : !booking.time ? 3 : 4
   const [step, setStep] = useState(initial)

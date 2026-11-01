@@ -43,9 +43,16 @@ export function AssociatesView() {
     fetch("/api/payments/associate", { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) return
-        const body = (await response.json()) as { patients?: PatientChoice[]; associates?: Associate[] }
+        const body = (await response.json()) as { patients?: PatientChoice[]; associates?: (Associate & { created_at?: string })[] }
         if (active) {
-          if (Array.isArray(body.associates)) setServerAssociates(body.associates)
+          if (Array.isArray(body.associates)) {
+            setServerAssociates(
+              body.associates.map((item) => ({
+                ...item,
+                createdAt: item.createdAt || item.created_at || new Date().toISOString(),
+              })),
+            )
+          }
           if (Array.isArray(body.patients)) setServerPatients(body.patients)
         }
       })
@@ -238,7 +245,7 @@ export function AssociatesView() {
                   </TableCell>
                   <TableCell>{associate.status === "active" ? formatMoney(rules.fee) : "—"}</TableCell>
                   <TableCell>{associate.status === "active" ? "Ativo" : "Inativo"}</TableCell>
-                  <TableCell>{formatDate(associate.createdAt, "dd/MM/yyyy")}</TableCell>
+                  <TableCell>{formatDate(associate.createdAt || (associate as any).created_at, "dd/MM/yyyy")}</TableCell>
                   <TableCell>
                     <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(associate)}>Editar</Button>
                   </TableCell>

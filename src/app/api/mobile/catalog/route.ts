@@ -1,22 +1,50 @@
 import { NextResponse } from "next/server"
 
-import { PaymentAuthorizationError, requireCurrentPatient } from "@/lib/payments/current-patient"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
+import type { Appointment, AppointmentStatus, BlockedSlot, Modality } from "@/lib/types"
 
 export async function GET() {
   try {
-    await requireCurrentPatient()
     const db = createSupabaseAdmin()
     if (!db) return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
 
-    const [professionals, services, offers] = await Promise.all([
+    const [professionals, services, offers, activeAppointments, blockedSlots] = await Promise.all([
       db.from("professionals").select("*").eq("active", true).order("name"),
       db.from("professional_services").select("*"),
       db.from("catalog_offers").select("id,kind"),
+      db
+        .from("appointments")
+        .select("id,professional_id,starts_at,ends_at,status")
+        .in("status", ["scheduled", "confirmed"]),
+      db.from("blocked_slots").select("id,professional_id,starts_at,ends_at,reason"),
     ])
+
     if (professionals.error || services.error || offers.error) {
       return NextResponse.json({ error: "Não foi possível carregar médicos e procedimentos." }, { status: 500 })
     }
+
+    const busyAppointments: Appointment[] = (activeAppointments.data || []).map((row) => ({
+      id: row.id,
+      patientId: "",
+      professionalId: row.professional_id,
+      serviceId: "",
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      status: row.status as AppointmentStatus,
+      modality: "presencial" as Modality,
+      notes: "",
+      origin: "desktop",
+      createdAt: row.starts_at,
+    }))
+
+    const activeBlocks: BlockedSlot[] = (blockedSlots.data || []).map((row) => ({
+      id: row.id,
+      professionalId: row.professional_id,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      reason: row.reason || "Horário indisponível",
+      origin: "desktop",
+    }))
 
     return NextResponse.json({
       professionals: professionals.data.map((professional) => ({
@@ -47,9 +75,13 @@ export async function GET() {
             kind: offers.data.find((offer) => offer.id === service.id)?.kind || "consulta",
           })),
       })),
+      busyAppointments,
+      blockedSlots: activeBlocks,
     })
   } catch (error) {
-    const status = error instanceof PaymentAuthorizationError ? 401 : 500
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível carregar o catálogo." }, { status })
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Não foi possível carregar o catálogo." },
+      { status: 500 },
+    )
   }
 }

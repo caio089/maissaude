@@ -25,7 +25,9 @@ export async function GET() {
       .order("starts_at", { ascending: false }),
     db
       .from("payments")
-      .select("id,appointment_id,patient_id,professional_id,amount,method,status,created_at,paid_at,reference,simulated,description")
+      .select(
+        "id,appointment_id,patient_id,professional_id,amount,method,status,created_at,paid_at,reference,simulated,description,invoice_url,pix_payload",
+      )
       .eq("patient_id", patient.id)
       .order("created_at", { ascending: false }),
   ])
@@ -49,7 +51,7 @@ export async function GET() {
     paymentId: row.payment_id || undefined,
   }))
 
-  const payments: Payment[] = (paymentsResult.data || []).map((row) => ({
+  const payments: (Payment & { invoiceUrl?: string; pixPayload?: string })[] = (paymentsResult.data || []).map((row: any) => ({
     id: row.id,
     appointmentId: row.appointment_id || null,
     patientId: row.patient_id,
@@ -62,6 +64,8 @@ export async function GET() {
     reference: row.reference,
     simulated: Boolean(row.simulated),
     description: row.description || "Consulta",
+    invoiceUrl: row.invoice_url || undefined,
+    pixPayload: row.pix_payload || undefined,
   }))
 
   return NextResponse.json({ appointments, payments })

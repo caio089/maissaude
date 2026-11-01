@@ -29,7 +29,15 @@ export async function GET() {
   if (patientsResult.error) return NextResponse.json({ error: "Não foi possível carregar os pacientes." }, { status: 500 })
   return NextResponse.json({
     patients: patientsResult.data,
-    associates: associatesResult.data || [],
+    associates: (associatesResult.data || []).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      cpf: row.cpf,
+      phone: row.phone,
+      email: row.email,
+      status: row.status,
+      createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+    })),
     rules: rulesResult.data || null,
   })
 }

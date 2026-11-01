@@ -10,6 +10,7 @@ export function FadeIn({ children, className }: { children: React.ReactNode; cla
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
+      suppressHydrationWarning
     >
       {children}
     </motion.div>

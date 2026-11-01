@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { addDays } from "date-fns"
 import {
   ArrowLeft,
@@ -62,6 +62,23 @@ export function CatalogPanel({
   const patient = useDemoStore((state) => state.data.patients.find((item) => item.id === patientId))
   const associates = useDemoStore((state) => state.associates)
   const associate = patient ? findActiveAssociate(associates, patient.cpf) : null
+  const syncCatalogAvailability = useDemoStore((state) => state.syncCatalogAvailability)
+
+  useEffect(() => {
+    fetch("/api/mobile/catalog", { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) return
+        const body = await res.json()
+        if (body.professionals) {
+          syncCatalogAvailability({
+            professionals: body.professionals,
+            busyAppointments: body.busyAppointments,
+            blockedSlots: body.blockedSlots,
+          })
+        }
+      })
+      .catch(() => {})
+  }, [syncCatalogAvailability])
   const [screen, setScreen] = useState<FlowScreen>("home")
   const [kind, setKind] = useState<CatalogKind>("consulta")
   const [modality, setModality] = useState<Modality | "all">("all")

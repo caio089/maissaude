@@ -67,11 +67,11 @@ export function DesktopShell({ children }: { children: React.ReactNode }) {
   }, [pathname])
 
   return (
-    <div className="min-h-dvh bg-background lg:grid lg:grid-cols-[252px_minmax(0,1fr)]">
-      <aside className="sticky top-0 hidden h-dvh flex-col bg-sidebar text-sidebar-foreground lg:flex">
+    <div className="min-h-dvh bg-background lg:grid lg:grid-cols-[252px_minmax(0,1fr)]" suppressHydrationWarning>
+      <aside className="sticky top-0 hidden h-dvh flex-col bg-sidebar text-sidebar-foreground lg:flex" suppressHydrationWarning>
         <SidebarBody pathname={pathname} />
       </aside>
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-0 flex-col" suppressHydrationWarning>
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-white/85 px-4 backdrop-blur lg:px-8">
           <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
             <SheetTrigger asChild>
@@ -112,8 +112,8 @@ export function DesktopShell({ children }: { children: React.ReactNode }) {
 function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   const clinic = useDemoStore((state) => state.data.clinic)
   return (
-    <div className="flex h-full flex-col">
-      <div className="px-5 py-5">
+    <div className="flex h-full flex-col" suppressHydrationWarning>
+      <div className="px-5 py-5" suppressHydrationWarning>
         <Logo light />
         <p className="mt-4 text-sm font-medium text-white">{clinic.name}</p>
         <p className="text-xs text-sidebar-foreground/65">{clinic.city}</p>

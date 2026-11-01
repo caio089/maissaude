@@ -81,10 +81,14 @@ export function DashboardView() {
   return (
     <FadeIn className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
+        <div suppressHydrationWarning>
           <p className="section-kicker">{data.clinic.city}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{formatDate(now, "EEEE, d 'de' MMMM")}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{greeting(now)}, {data.clinic.name}</h1>
+          <p className="mt-1 text-sm text-muted-foreground" suppressHydrationWarning>
+            {formatDate(now, "EEEE, d 'de' MMMM")}
+          </p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight" suppressHydrationWarning>
+            {greeting(now)}, {data.clinic.name}
+          </h1>
         </div>
         <div className="flex rounded-xl bg-white p-1 ring-1 ring-foreground/10" role="group" aria-label="Período dos indicadores">
           {PERIODS.map((item) => (

@@ -65,7 +65,7 @@ export function MobileSearch() {
             <span className="min-w-0">
               <span className="block font-medium">{professional.name}</span>
               <span className="block text-sm text-muted-foreground">{SPECIALTY_LABEL[professional.specialty]} · {CLINIC_NAME}</span>
-              <span className="mt-1 block text-sm">{formatMoney(professional.price)} · nota {professional.rating.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
+              <span className="mt-1 block text-sm">{formatMoney(professional.price)} · nota {(professional.rating ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
               <span className="mt-1 block text-xs text-muted-foreground">{professional.startHour}–{professional.endHour} · {professional.location}</span>
             </span>
           </Link>

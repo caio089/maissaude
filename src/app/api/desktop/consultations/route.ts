@@ -83,7 +83,10 @@ export async function POST(request: Request) {
     const minutes = Number(body.time.slice(0, 2)) * 60 + Number(body.time.slice(3))
     const timeMinutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5))
     const weekday = new Date(`${body.date}T12:00:00Z`).getUTCDay()
-    if (!Number.isFinite(start.getTime()) || start <= new Date() || !professional.work_days.includes(weekday) || minutes < timeMinutes(professional.start_hour) || minutes + Number(service.duration_min) > timeMinutes(professional.end_hour)) {
+    const workDays = Array.isArray(professional.work_days) ? professional.work_days : []
+    const startHour = professional.start_hour || "08:00"
+    const endHour = professional.end_hour || "18:00"
+    if (!Number.isFinite(start.getTime()) || start <= new Date() || !workDays.includes(weekday) || minutes < timeMinutes(startHour) || minutes + Number(service.duration_min) > timeMinutes(endHour)) {
       return NextResponse.json({ error: "Escolha um horário futuro dentro da agenda do profissional." }, { status: 422 })
     }
     const [conflicts, blocks] = await Promise.all([
@@ -144,5 +147,126 @@ export async function POST(request: Request) {
     }
   } catch {
     return NextResponse.json({ error: "Não foi possível concluir o agendamento. Confira os dados e a agenda." }, { status: 422 })
+  }
+}
+
+export async function PATCH(request: Request) {
+  if (!(await hasClinicSession())) return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
+  const db = createSupabaseAdmin()
+  if (!db) return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
+
+  try {
+    const body = (await request.json()) as {
+      appointmentId?: string
+      status?: "scheduled" | "confirmed" | "completed" | "cancelled"
+      date?: string
+      time?: string
+      paymentId?: string
+      settleMethod?: string
+    }
+
+    if (body.paymentId) {
+      const now = new Date().toISOString()
+      const method = body.settleMethod === "card" ? "card" : "pix"
+      const { data: updatedPayment, error: payError } = await db
+        .from("payments")
+        .update({ status: "paid", paid_at: now, method })
+        .eq("id", body.paymentId)
+        .select("id, appointment_id, status")
+        .maybeSingle()
+      if (payError || !updatedPayment) {
+        return NextResponse.json({ error: "Não foi possível registrar o pagamento." }, { status: 500 })
+      }
+      if (updatedPayment.appointment_id) {
+        await db
+          .from("appointments")
+          .update({ status: "confirmed" })
+          .eq("id", updatedPayment.appointment_id)
+          .eq("status", "scheduled")
+      }
+      return NextResponse.json({ ok: true, paymentId: body.paymentId, status: "paid" })
+    }
+
+    if (!body.appointmentId) {
+      return NextResponse.json({ error: "ID da consulta ou pagamento é obrigatório." }, { status: 422 })
+    }
+
+    if (body.date && body.time) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date) || !/^\d{2}:\d{2}$/.test(body.time)) {
+        return NextResponse.json({ error: "Data ou horário inválidos." }, { status: 422 })
+      }
+      const { data: appointment, error: aptError } = await db
+        .from("appointments")
+        .select("id, professional_id, service_id, status")
+        .eq("id", body.appointmentId)
+        .maybeSingle()
+      if (aptError || !appointment) {
+        return NextResponse.json({ error: "Consulta não encontrada." }, { status: 404 })
+      }
+      if (appointment.status === "cancelled" || appointment.status === "completed") {
+        return NextResponse.json({ error: "Esta consulta não pode ser reagendada." }, { status: 422 })
+      }
+
+      const { data: service } = await db
+        .from("professional_services")
+        .select("duration_min")
+        .eq("id", appointment.service_id)
+        .maybeSingle()
+      const durationMin = Number(service?.duration_min) || 40
+
+      const startsAt = new Date(`${body.date}T${body.time}:00-03:00`)
+      const endsAt = new Date(startsAt.getTime() + durationMin * 60000)
+
+      const [conflicts, blocks] = await Promise.all([
+        db.from("appointments")
+          .select("id")
+          .eq("professional_id", appointment.professional_id)
+          .neq("id", appointment.id)
+          .in("status", ["scheduled", "confirmed"])
+          .lt("starts_at", endsAt.toISOString())
+          .gt("ends_at", startsAt.toISOString())
+          .limit(1),
+        db.from("blocked_slots")
+          .select("id")
+          .eq("professional_id", appointment.professional_id)
+          .lt("starts_at", endsAt.toISOString())
+          .gt("ends_at", startsAt.toISOString())
+          .limit(1),
+      ])
+      if (conflicts.data?.length || blocks.data?.length) {
+        return NextResponse.json({ error: "Esse horário está ocupado ou bloqueado." }, { status: 409 })
+      }
+
+      const { error: updateError } = await db
+        .from("appointments")
+        .update({ starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(), status: "scheduled" })
+        .eq("id", appointment.id)
+      if (updateError) {
+        return NextResponse.json({ error: "Não foi possível reagendar a consulta." }, { status: 500 })
+      }
+      return NextResponse.json({ ok: true, appointmentId: appointment.id, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString() })
+    }
+
+    if (body.status) {
+      if (!["scheduled", "confirmed", "completed", "cancelled"].includes(body.status)) {
+        return NextResponse.json({ error: "Status inválido." }, { status: 422 })
+      }
+      const updatePayload: Record<string, string> = { status: body.status }
+      if (body.status === "cancelled") {
+        updatePayload.notes = "Cancelada pela clínica."
+      }
+      const { error: updateError } = await db
+        .from("appointments")
+        .update(updatePayload)
+        .eq("id", body.appointmentId)
+      if (updateError) {
+        return NextResponse.json({ error: "Não foi possível atualizar o status da consulta." }, { status: 500 })
+      }
+      return NextResponse.json({ ok: true, appointmentId: body.appointmentId, status: body.status })
+    }
+
+    return NextResponse.json({ error: "Nenhuma ação informada." }, { status: 422 })
+  } catch {
+    return NextResponse.json({ error: "Erro ao processar alteração." }, { status: 500 })
   }
 }

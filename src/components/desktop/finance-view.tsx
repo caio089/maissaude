@@ -45,6 +45,7 @@ export function FinanceView() {
   const [serverPayments, setServerPayments] = useState<Payment[]>([])
   const [serverAppointments, setServerAppointments] = useState<Appointment[]>([])
   const [serverPatients, setServerPatients] = useState<Patient[]>([])
+  const [serverAssociates, setServerAssociates] = useState<Associate[]>([])
 
   useEffect(() => {
     let active = true
@@ -65,6 +66,22 @@ export function FinanceView() {
         }
       })
       .catch(() => {})
+
+    fetch("/api/payments/associate", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return
+        const body = (await response.json()) as { associates?: (Associate & { created_at?: string })[] }
+        if (active && Array.isArray(body.associates)) {
+          setServerAssociates(
+            body.associates.map((item) => ({
+              ...item,
+              createdAt: item.createdAt || item.created_at || new Date().toISOString(),
+            })),
+          )
+        }
+      })
+      .catch(() => {})
+
     return () => {
       active = false
     }
@@ -91,18 +108,25 @@ export function FinanceView() {
     }
   }, [data, serverPayments, serverAppointments, serverPatients])
 
+  const allAssociates = useMemo(() => {
+    const map = new Map<string, Associate>()
+    for (const item of associates) map.set(item.cpf.replace(/\D/g, ""), item)
+    for (const item of serverAssociates) map.set(item.cpf.replace(/\D/g, ""), item)
+    return [...map.values()]
+  }, [associates, serverAssociates])
+
   const now = useMemo(() => new Date(), [])
   const metrics = computeDashboard(mergedData, "month", now)
   const month = monthKey(now)
   const manualIncome = sumEntries(cashEntries, "income", month)
   const manualExpense = sumEntries(cashEntries, "expense", month)
-  const membershipIncome = membershipForMonth(associates, associateFee, month)
+  const membershipIncome = membershipForMonth(allAssociates, associateFee, month)
   const monthRevenue = metrics.revenue + manualIncome + membershipIncome
   const balance = monthRevenue - manualExpense
   const pending = sumAmount(mergedData.payments.filter((item) => item.status === "pending"))
   const rows = mergedData.payments.filter((item) => filter === "all" || item.status === filter)
-  const series = withManualIncome(metrics.series, cashEntries, associates, associateFee, now)
-  const monthly = withManualMonthly(metrics.monthly, cashEntries, associates, associateFee, now)
+  const series = withManualIncome(metrics.series, cashEntries, allAssociates, associateFee, now)
+  const monthly = withManualMonthly(metrics.monthly, cashEntries, allAssociates, associateFee, now)
 
   return (
     <FadeIn className="space-y-5">
@@ -145,7 +169,7 @@ export function FinanceView() {
           <MonthlyBars data={monthly} />
         </div>
       </section>
-      <AssociateMemberships associates={associates} fee={associateFee} />
+      <AssociateMemberships associates={allAssociates} fee={associateFee} />
       <CashLedger entries={cashEntries} onRemove={(id) => { removeCashEntry(id); toast.success("Lançamento removido.") }} />
       <div className="panel overflow-hidden">
         <div className="flex items-center justify-between gap-3 p-4">
@@ -185,7 +209,23 @@ export function FinanceView() {
                     <TableCell><PaymentBadge status={payment.status} /></TableCell>
                     <TableCell className="space-x-2 text-right">
                       {payment.status === "pending" ? (
-                        <Button type="button" size="sm" variant="outline" onClick={() => { settlePayment(payment.id, "pix"); toast.success("Pagamento registrado.") }}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            settlePayment(payment.id, "pix")
+                            setServerPayments((prev) =>
+                              prev.map((item) => (item.id === payment.id ? { ...item, status: "paid", paidAt: new Date().toISOString(), method: "pix" } : item)),
+                            )
+                            void fetch("/api/desktop/consultations", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ paymentId: payment.id, settleMethod: "pix" }),
+                            }).catch(() => {})
+                            toast.success("Pagamento registrado.")
+                          }}
+                        >
                           Registrar Pix
                         </Button>
                       ) : null}

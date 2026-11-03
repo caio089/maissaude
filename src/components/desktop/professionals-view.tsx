@@ -167,13 +167,13 @@ export function ProfessionalsView() {
             </div>
             <p className="mt-5 max-w-2xl text-sm leading-6 text-muted-foreground">{selected.bio}</p>
             <div className="mt-5 flex flex-wrap gap-2">
-              {selected.workDays.map((day) => (
+              {(selected.workDays ?? []).map((day) => (
                 <span key={day} className="rounded-full bg-muted px-3 py-1 text-xs">{WEEKDAY_SHORT[day]}</span>
               ))}
               <span className="rounded-full bg-muted px-3 py-1 text-xs">{selected.startHour}–{selected.endHour}</span>
             </div>
             <div className="mt-6 grid gap-3 md:grid-cols-2">
-              {selected.services.map((service) => (
+              {(selected.services ?? []).map((service) => (
                 <div key={service.id} className="rounded-2xl bg-muted/70 p-4">
                   <p className="text-sm font-medium">{service.name}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{service.kind === "cirurgia" ? "Cirurgia" : service.kind === "exame" ? "Procedimento ou exame" : "Consulta"} · {service.durationMin} min · {service.modality === "teleconsulta" ? "teleconsulta" : "presencial"}</p>
@@ -184,11 +184,11 @@ export function ProfessionalsView() {
             <div className="mt-6">
               <div className="flex items-center gap-2">
                 <Star className="size-4 fill-amber-400 text-amber-400" />
-                <p className="font-medium">{selected.rating.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p>
+                <p className="font-medium">{(selected.rating ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p>
                 <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">Avaliações</span>
               </div>
               <ul className="mt-3 space-y-2">
-                {selected.reviews.map((review) => (
+                {(selected.reviews ?? []).map((review) => (
                   <li key={review.id} className="rounded-2xl bg-muted/60 p-3 text-sm">
                     <p>{review.comment}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{review.author}</p>

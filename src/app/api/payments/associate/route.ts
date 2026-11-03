@@ -141,3 +141,46 @@ export async function POST(request: Request) {
     )
   }
 }
+
+export async function PATCH(request: Request) {
+  if (!(await hasClinicSession())) {
+    return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
+  }
+  const admin = createSupabaseAdmin()
+  if (!admin) return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
+
+  try {
+    const body = (await request.json()) as {
+      id?: string
+      name?: string
+      cpf?: string
+      phone?: string
+      email?: string
+      status?: "active" | "inactive"
+    }
+
+    if (!body.id) {
+      return NextResponse.json({ error: "ID do associado é obrigatório." }, { status: 422 })
+    }
+
+    const updatePayload: Record<string, string> = {}
+    if (body.name?.trim()) updatePayload.name = body.name.trim()
+    if (body.phone?.trim()) updatePayload.phone = body.phone.trim()
+    if (body.email?.trim()) updatePayload.email = body.email.trim().toLowerCase()
+    if (body.status === "active" || body.status === "inactive") updatePayload.status = body.status
+
+    const { data, error } = await admin
+      .from("associates")
+      .update(updatePayload)
+      .eq("id", body.id)
+      .select("id, name, cpf, phone, email, status")
+      .maybeSingle()
+
+    if (error) {
+      return NextResponse.json({ error: "Não foi possível atualizar o associado." }, { status: 500 })
+    }
+    return NextResponse.json({ ok: true, associate: data })
+  } catch {
+    return NextResponse.json({ error: "Erro ao atualizar associado." }, { status: 500 })
+  }
+}

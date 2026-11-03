@@ -58,6 +58,7 @@ export function AgendaView() {
   const [serverAppointments, setServerAppointments] = useState<Appointment[]>([])
   const [serverPatients, setServerPatients] = useState<Patient[]>([])
   const [serverBlockedSlots, setServerBlockedSlots] = useState<BlockedSlot[]>([])
+  const [serverProfessionals, setServerProfessionals] = useState<Professional[]>([])
 
   useEffect(() => {
     let active = true
@@ -78,6 +79,17 @@ export function AgendaView() {
         }
       })
       .catch(() => {})
+
+    fetch("/api/desktop/professionals", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return
+        const body = await response.json()
+        if (active && Array.isArray(body.professionals)) {
+          setServerProfessionals(body.professionals)
+        }
+      })
+      .catch(() => {})
+
     return () => {
       active = false
     }
@@ -104,6 +116,13 @@ export function AgendaView() {
     return [...map.values()]
   }, [data.blockedSlots, serverBlockedSlots])
 
+  const allProfessionals = useMemo(() => {
+    const map = new Map<string, Professional>()
+    for (const item of data.professionals) map.set(item.id, item)
+    for (const item of serverProfessionals) map.set(item.id, item)
+    return [...map.values()]
+  }, [data.professionals, serverProfessionals])
+
   const [createOpen, setCreateOpen] = useState(false)
   const [registering, setRegistering] = useState(false)
   const [patientForm, setPatientForm] = useState<PatientInput>(() => emptyPatientForm(data.patients))
@@ -127,7 +146,7 @@ export function AgendaView() {
     reason: "Horário indisponível",
   })
 
-  const professionals = data.professionals.filter((item) => {
+  const professionals = allProfessionals.filter((item) => {
     if (professionalId !== "all" && item.id !== professionalId) return false
     if (specialty !== "all" && item.specialty !== specialty) return false
     return item.active
@@ -141,7 +160,7 @@ export function AgendaView() {
   const monthCells = Array.from({ length: 42 }, (_, index) => addDays(gridStart, index))
 
   const visibleAppointments = appointments.filter((item) => {
-    const professional = data.professionals.find((person) => person.id === item.professionalId)
+    const professional = allProfessionals.find((person) => person.id === item.professionalId)
     if (!professional) return false
     if (professionalId !== "all" && item.professionalId !== professionalId) return false
     if (specialty !== "all" && professional.specialty !== specialty) return false
@@ -158,7 +177,7 @@ export function AgendaView() {
   }
 
   function openCreate(prefill?: { professionalId?: string; date?: string; time?: string }) {
-    const professional = data.professionals.find((item) => item.id === (prefill?.professionalId ?? draft.professionalId)) ?? data.professionals[0]
+    const professional = allProfessionals.find((item) => item.id === (prefill?.professionalId ?? draft.professionalId)) ?? allProfessionals[0]
     setDraft({
       patientId: data.currentPatientId,
       professionalId: professional?.id ?? "",
@@ -196,7 +215,7 @@ export function AgendaView() {
     toast.success(registering ? "Paciente cadastrado e consulta agendada." : "Agendamento criado.")
   }
 
-  const draftProfessional = data.professionals.find((item) => item.id === draft.professionalId)
+  const draftProfessional = allProfessionals.find((item) => item.id === draft.professionalId)
   const draftService = draftProfessional?.services.find((item) => item.id === draft.serviceId) ?? draftProfessional?.services[0]
   const createSlots = draftProfessional && draftService
     ? availableSlots({
@@ -208,7 +227,7 @@ export function AgendaView() {
       })
     : []
 
-  const editProfessional = data.professionals.find((item) => item.id === selectedAppointment?.professionalId)
+  const editProfessional = allProfessionals.find((item) => item.id === selectedAppointment?.professionalId)
   const editService = editProfessional && selectedAppointment
     ? editProfessional.services.find((item) => item.id === selectedAppointment.serviceId)
     : undefined
@@ -266,7 +285,7 @@ export function AgendaView() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os profissionais</SelectItem>
-            {data.professionals.map((item) => (
+            {allProfessionals.map((item) => (
               <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
             ))}
           </SelectContent>
@@ -301,7 +320,7 @@ export function AgendaView() {
           appointments={visibleAppointments}
           blocks={blockedSlots.filter((item) => professionalId === "all" || item.professionalId === professionalId)}
           mode={view === "day" ? "professionals" : "days"}
-          roster={data.professionals}
+          roster={allProfessionals}
           patients={patients}
           onSelectAppointment={setSelectedId}
           onCreateSlot={(nextProfessional, date, time) => openCreate({ professionalId: nextProfessional, date, time })}
@@ -318,7 +337,7 @@ export function AgendaView() {
           {dayAppointments.length === 0 ? <p className="py-6 text-sm text-muted-foreground">Nenhum agendamento neste dia com os filtros atuais.</p> : null}
           {dayAppointments.map((item) => {
             const patient = patients.find((person) => person.id === item.patientId)
-            const professional = data.professionals.find((person) => person.id === item.professionalId)
+            const professional = allProfessionals.find((person) => person.id === item.professionalId)
             return (
               <button key={item.id} type="button" onClick={() => setSelectedId(item.id)} className="flex w-full items-center gap-4 py-3 text-left hover:bg-muted/40">
                 <span className="w-14 text-sm font-medium">{formatDate(item.startsAt, "HH:mm")}</span>
@@ -379,13 +398,13 @@ export function AgendaView() {
               <Select
                 value={draft.professionalId}
                 onValueChange={(value) => {
-                  const professional = data.professionals.find((item) => item.id === value)
+                  const professional = allProfessionals.find((item) => item.id === value)
                   setDraft((current) => ({ ...current, professionalId: value, serviceId: professional?.services[0]?.id ?? "" }))
                 }}
               >
                 <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {data.professionals.filter((item) => item.active).map((item) => (
+                  {allProfessionals.filter((item) => item.active).map((item) => (
                     <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -436,15 +455,46 @@ export function AgendaView() {
               onRescheduleChange={setReschedule}
               onConfirm={() => {
                 setAppointmentStatus(selectedAppointment.id, "confirmed")
+                setServerAppointments((prev) =>
+                  prev.map((item) => (item.id === selectedAppointment.id ? { ...item, status: "confirmed" } : item)),
+                )
+                void fetch("/api/desktop/consultations", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ appointmentId: selectedAppointment.id, status: "confirmed" }),
+                }).catch(() => {})
                 toast.success("Presença confirmada.")
               }}
               onComplete={() => {
                 setAppointmentStatus(selectedAppointment.id, "completed")
+                setServerAppointments((prev) =>
+                  prev.map((item) => (item.id === selectedAppointment.id ? { ...item, status: "completed" } : item)),
+                )
+                void fetch("/api/desktop/consultations", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ appointmentId: selectedAppointment.id, status: "completed" }),
+                }).catch(() => {})
                 toast.success("Consulta marcada como realizada.")
               }}
-              onSaveReschedule={() => {
+              onSaveReschedule={async () => {
                 const result = rescheduleAppointment(selectedAppointment.id, reschedule.date, reschedule.time)
-                if (!result.ok) {
+                const newStartsAt = `${reschedule.date}T${reschedule.time}:00-03:00`
+                setServerAppointments((prev) =>
+                  prev.map((item) => (item.id === selectedAppointment.id ? { ...item, startsAt: newStartsAt, status: "scheduled" } : item)),
+                )
+                try {
+                  await fetch("/api/desktop/consultations", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      appointmentId: selectedAppointment.id,
+                      date: reschedule.date,
+                      time: reschedule.time,
+                    }),
+                  })
+                } catch {}
+                if (!result.ok && !serverAppointments.some((item) => item.id === selectedAppointment.id)) {
                   toast.error(result.message)
                   return
                 }
@@ -473,7 +523,7 @@ export function AgendaView() {
               <Select value={block.professionalId} onValueChange={(value) => setBlock((current) => ({ ...current, professionalId: value }))}>
                 <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {data.professionals.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+                  {allProfessionals.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </Field>
@@ -521,6 +571,14 @@ export function AgendaView() {
         onConfirm={() => {
           if (!cancelId) return
           cancelAppointment(cancelId, "clinic")
+          setServerAppointments((prev) =>
+            prev.map((item) => (item.id === cancelId ? { ...item, status: "cancelled" } : item)),
+          )
+          void fetch("/api/desktop/consultations", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ appointmentId: cancelId, status: "cancelled" }),
+          }).catch(() => {})
           setCancelId(null)
           setSelectedId(null)
           toast.success("Consulta cancelada.")

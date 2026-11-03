@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { formatDate } from "@/lib/format"
 import { GuideExportDialog, type GuideDialogItem } from "@/components/desktop/guide-export-dialog"
 
 type Patient = { id: string; name: string; cpf: string; birthDate?: string }
 type Guide = GuideDialogItem
-const date = (value: string) => new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Fortaleza" }).format(new Date(value))
+const date = (value?: string | null) => formatDate(value, "dd/MM/yyyy HH:mm")
 
 export function GuidesView() {
   const [query, setQuery] = useState("")

@@ -181,6 +181,22 @@ export function AssociatesView() {
       }
     }
 
+    setSaving(true)
+    try {
+      await fetch("/api/payments/associate", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editing.id, ...normalizedForm }),
+      })
+      setServerAssociates((prev) =>
+        prev.map((item) => (item.id === editing.id ? { ...item, ...normalizedForm } : item)),
+      )
+    } catch {
+      // continua para atualizar localmente
+    } finally {
+      setSaving(false)
+    }
+
     const result = updateAssociate(editing.id, normalizedForm)
     if (!result.ok) {
       toast.error(result.message)

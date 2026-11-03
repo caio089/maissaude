@@ -61,13 +61,13 @@ export function ProfessionalView({ id }: { id: string }) {
             <p className="text-xl font-semibold">{formatMoney(professional.price)}</p>
             <p className="inline-flex items-center gap-1 text-sm">
               <Star className="size-4 fill-amber-400 text-amber-400" />
-              {professional.rating.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+              {(professional.rating ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
               <span className="text-xs text-muted-foreground">demo</span>
             </p>
           </div>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">{professional.bio}</p>
           <p className="mt-3 flex items-start gap-2 text-sm"><MapPin className="mt-0.5 size-4 shrink-0" /> {professional.location}</p>
-          <p className="mt-2 text-xs text-muted-foreground">Atende {professional.workDays.map((day) => WEEKDAY_SHORT[day]).join(", ")}</p>
+          <p className="mt-2 text-xs text-muted-foreground">Atende {(professional.workDays ?? []).map((day) => WEEKDAY_SHORT[day]).join(", ")}</p>
         </div>
         <section className="rounded-3xl bg-white p-4 ring-1 ring-border">
           <h2 className="font-semibold">Próximos horários</h2>
@@ -86,7 +86,7 @@ export function ProfessionalView({ id }: { id: string }) {
           </div>
         </section>
         <section className="space-y-2">
-          {professional.reviews.map((review) => (
+          {(professional.reviews ?? []).map((review) => (
             <article key={review.id} className="rounded-2xl bg-white p-4 text-sm ring-1 ring-border">
               <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Avaliação de paciente</p>
               <p className="mt-2">{review.comment}</p>

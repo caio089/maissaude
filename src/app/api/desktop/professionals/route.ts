@@ -19,8 +19,8 @@ export async function GET() {
   return NextResponse.json({ professionals: professionals.data.map((p) => ({
     id: p.id, name: p.name, specialty: p.specialty, credentialLabel: p.credential_label,
     credentialCode: p.credential_code, bio: p.bio, price: Number(p.price), rating: Number(p.rating),
-    reviewCount: p.review_count, reviews: [], workDays: p.work_days, startHour: p.start_hour.slice(0, 5),
-    endHour: p.end_hour.slice(0, 5), location: p.location, active: p.active, avatarSeed: p.avatar_seed,
+    reviewCount: p.review_count, reviews: [], workDays: Array.isArray(p.work_days) ? p.work_days : [1, 2, 3, 4, 5], startHour: (p.start_hour || "08:00").slice(0, 5),
+    endHour: (p.end_hour || "18:00").slice(0, 5), location: p.location, active: p.active, avatarSeed: p.avatar_seed,
     services: services.data.filter((s) => s.professional_id === p.id).map((s) => ({ id: s.id, name: s.name, durationMin: s.duration_min, price: Number(s.price), modality: s.modality, kind: offers.data.find((o) => o.id === s.id)?.kind || "consulta" })),
   })) })
 }

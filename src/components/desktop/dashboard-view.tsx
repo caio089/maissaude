@@ -12,7 +12,7 @@ import { formatDate, formatMoney, greeting, percent } from "@/lib/format"
 import { mapDbAppointment, mapDbPayment, mapDbPatient } from "@/lib/desktop-sync"
 import { buildNotifications, computeDashboard } from "@/lib/metrics"
 import { useDemoStore } from "@/lib/store"
-import type { Appointment, DashboardPeriod, Patient, Payment } from "@/lib/types"
+import type { Appointment, Associate, DashboardPeriod, Patient, Payment } from "@/lib/types"
 
 const PERIODS: Array<{ id: DashboardPeriod; label: string }> = [
   { id: "7d", label: "7 dias" },
@@ -30,6 +30,7 @@ export function DashboardView() {
   const [serverPayments, setServerPayments] = useState<Payment[]>([])
   const [serverAppointments, setServerAppointments] = useState<Appointment[]>([])
   const [serverPatients, setServerPatients] = useState<Patient[]>([])
+  const [serverAssociates, setServerAssociates] = useState<Associate[]>([])
 
   useEffect(() => {
     let active = true
@@ -44,6 +45,22 @@ export function DashboardView() {
         }
       })
       .catch(() => {})
+
+    fetch("/api/payments/associate", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return
+        const body = (await response.json()) as { associates?: (Associate & { created_at?: string })[] }
+        if (active && Array.isArray(body.associates)) {
+          setServerAssociates(
+            body.associates.map((item) => ({
+              ...item,
+              createdAt: item.createdAt || item.created_at || new Date().toISOString(),
+            })),
+          )
+        }
+      })
+      .catch(() => {})
+
     return () => {
       active = false
     }
@@ -73,7 +90,14 @@ export function DashboardView() {
   const now = useMemo(() => new Date(), [])
   const metrics = computeDashboard(mergedData, period, now)
   const alerts = buildNotifications(mergedData, now).slice(0, 3)
-  const activeAssociates = associates.filter((item) => item.status === "active").length
+  const allAssociates = useMemo(() => {
+    const map = new Map<string, Associate>()
+    for (const item of associates) map.set(item.cpf.replace(/\D/g, ""), item)
+    for (const item of serverAssociates) map.set(item.cpf.replace(/\D/g, ""), item)
+    return [...map.values()]
+  }, [associates, serverAssociates])
+
+  const activeAssociates = allAssociates.filter((item) => item.status === "active").length
   const today = mergedData.appointments
     .filter((item) => item.status !== "cancelled" && isSameDay(new Date(item.startsAt), now))
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())

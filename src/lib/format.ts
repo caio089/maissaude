@@ -84,6 +84,7 @@ export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
 export const METHOD_LABEL: Record<PaymentMethod, string> = {
   pix: "Pix",
   card: "Cartão",
+  boleto: "Boleto",
 }
 
 export function greeting(date: Date) {

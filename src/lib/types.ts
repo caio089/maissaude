@@ -31,7 +31,7 @@ export type AppointmentStatus =
   | "no-show"
 
 export type PaymentStatus = "pending" | "paid" | "refunded" | "declined"
-export type PaymentMethod = "pix" | "card"
+export type PaymentMethod = "pix" | "card" | "boleto"
 export type Modality = "presencial" | "teleconsulta"
 export type PatientStatus = "active" | "inactive"
 export type AppointmentOrigin = "seed" | "desktop" | "mobile"
@@ -324,7 +324,10 @@ export interface AssociateRules {
   transportEnabled: boolean
   transportRidesPerMonth: number
   extraBenefits: string[]
+  graceMonths?: number
 }
+
+export type AssociateStatus = "active" | "overdue" | "cancelled" | "inactive"
 
 export interface Associate {
   id: string
@@ -332,7 +335,10 @@ export interface Associate {
   cpf: string
   phone: string
   email: string
-  status: PatientStatus
+  status: AssociateStatus
+  overdueMonths?: number
+  nextDueDate?: string | null
+  lastPaidAt?: string | null
   createdAt: string
 }
 
@@ -341,5 +347,7 @@ export interface AssociateInput {
   cpf: string
   phone: string
   email: string
-  status: PatientStatus
+  status: AssociateStatus
+  overdueMonths?: number
+  nextDueDate?: string | null
 }

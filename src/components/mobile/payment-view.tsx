@@ -3,14 +3,24 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import { ArrowLeft, BadgeCheck, CreditCard, Loader2, QrCode, Search } from "lucide-react"
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
+  BadgeCheck,
+  CreditCard,
+  Loader2,
+  QrCode,
+  Search,
+} from "lucide-react"
 import { toast } from "sonner"
+import { AssociateSubscriptionModal } from "@/components/mobile/associate-subscription"
 import { Button } from "@/components/ui/button"
-import { associateQuote, findActiveAssociate } from "@/lib/associate-rules"
+import { calculateAssociateQuote } from "@/lib/associate-rules"
 import { minimumAsaasCharge, minimumAsaasChargeMessage } from "@/lib/asaas/minimums"
 import { formatDate, formatMoney } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
-import { SPECIALTY_LABEL } from "@/lib/types"
+import { type Associate, type AssociateRules, SPECIALTY_LABEL } from "@/lib/types"
 
 type BillingType = "PIX" | "CREDIT_CARD"
 type AssociateAnswer = "yes" | "no"
@@ -22,13 +32,20 @@ type ChargeResult = {
   pixUnavailable?: boolean
 }
 
+type ServerMembership = {
+  active: boolean
+  status: "active" | "overdue" | "cancelled" | "inactive" | "none"
+  overdueMonths: number
+  pendingAmount: number
+  rules: AssociateRules
+}
+
 export function PaymentView() {
   const router = useRouter()
   const data = useDemoStore((state) => state.data)
   const booking = useDemoStore((state) => state.booking)
   const clearBooking = useDemoStore((state) => state.clearBooking)
   const sessionId = useDemoStore((state) => state.mobileSessionPatientId)
-  const associates = useDemoStore((state) => state.associates)
   const rules = useDemoStore((state) => state.associateRules)
 
   const [billingType, setBillingType] = useState<BillingType>("PIX")
@@ -36,17 +53,76 @@ export function PaymentView() {
   const [processing, setProcessing] = useState(false)
   const [charges, setCharges] = useState<ChargeResult[] | null>(null)
 
+  // Server-verified associate state (eliminates false positives from useDemoStore.associates)
+  const [membership, setMembership] = useState<ServerMembership | null>(null)
+  const [loadingMembership, setLoadingMembership] = useState(true)
+  const [showSubscribeModal, setShowSubscribeModal] = useState(false)
+  const [settleAssociateFee, setSettleAssociateFee] = useState<boolean>(true)
+
+  const loadMembership = () => {
+    fetch("/api/payments/subscription")
+      .then((res) => res.json())
+      .then((body) => {
+        if (body && !body.error && body.rules) {
+          setMembership({
+            active: Boolean(body.active),
+            status: body.status || (body.active ? "active" : "none"),
+            overdueMonths: Number(body.overdueMonths) || 0,
+            pendingAmount: Number(body.pendingAmount) || 0,
+            rules: body.rules,
+          })
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMembership(false))
+  }
+
+  useEffect(() => {
+    loadMembership()
+  }, [])
+
   const patient = data.patients.find((item) => item.id === sessionId)
   const professional = data.professionals.find((item) => item.id === booking.professionalId)
   const service = professional?.services.find((item) => item.id === booking.serviceId)
   const hasBooking = Boolean(professional && service && booking.date && booking.time)
 
-  const associate = patient ? findActiveAssociate(associates, patient.cpf) : null
-  const quote = service ? associateQuote(service.price, rules, associate) : null
-  const hasDiscount = Boolean(quote?.benefit && quote.benefit.discountPercent > 0)
-  const finalPrice = quote && associateAnswer === "yes" && hasDiscount
-    ? quote.amount
-    : (service?.price ?? 0)
+  const effectiveRules: AssociateRules = membership?.rules ?? rules
+
+  const associateStub: Associate | null =
+    membership && membership.status !== "none"
+      ? {
+          id: "server",
+          name: patient?.name || "",
+          cpf: patient?.cpf || "",
+          phone: patient?.phone || "",
+          email: patient?.email || "",
+          status: membership.status,
+          overdueMonths: membership.overdueMonths,
+          createdAt: new Date().toISOString(),
+        }
+      : null
+
+  const quote = service
+    ? calculateAssociateQuote({
+        listPrice: service.price,
+        rules: effectiveRules,
+        associate: associateStub,
+        settleOverdue: settleAssociateFee,
+      })
+    : null
+
+  let finalPrice = service?.price ?? 0
+  if (associateAnswer === "yes" && quote) {
+    if (membership?.status === "active") {
+      finalPrice = quote.consultationPrice
+    } else if (membership?.status === "overdue") {
+      finalPrice = settleAssociateFee ? quote.totalAmount : quote.consultationPrice
+    }
+  }
+
+  const potentialSavings =
+    quote?.potentialSavings ??
+    Math.round(((service?.price ?? 0) * effectiveRules.consultationDiscountPercent) / 100)
 
   const belowMinimum = Boolean(billingType && finalPrice < minimumAsaasCharge(billingType))
 
@@ -64,10 +140,14 @@ export function PaymentView() {
       toast.error("Informe se você é associado.")
       return
     }
-    if (associateAnswer === "yes" && !associate) {
+    if (
+      associateAnswer === "yes" &&
+      (!membership || membership.status === "none" || membership.status === "cancelled")
+    ) {
       toast.error("Não encontramos uma associação ativa para este CPF.")
       return
     }
+
     setProcessing(true)
     try {
       const response = await fetch("/api/payments/cart", {
@@ -84,6 +164,10 @@ export function PaymentView() {
           ],
           billingType,
           associateAnswer,
+          settleAssociateFee:
+            associateAnswer === "yes" && membership?.status === "overdue"
+              ? settleAssociateFee
+              : undefined,
         }),
       })
       const body = (await response.json()) as { error?: string; charges?: ChargeResult[] }
@@ -217,7 +301,8 @@ export function PaymentView() {
           <div>
             <p className="font-semibold text-base">{professional?.name}</p>
             <p className="text-xs text-muted-foreground">
-              {professional?.specialty ? SPECIALTY_LABEL[professional.specialty] : "Especialista"} · {professional?.location || "Unidade"}
+              {professional?.specialty ? SPECIALTY_LABEL[professional.specialty] : "Especialista"} ·{" "}
+              {professional?.location || "Unidade"}
             </p>
           </div>
           <span className="shrink-0 font-semibold text-base">
@@ -225,13 +310,37 @@ export function PaymentView() {
           </span>
         </div>
         <div className="pt-2 border-t text-muted-foreground">
-          <p><strong className="text-foreground">{service?.name}</strong> ({service?.durationMin} min)</p>
-          <p>{booking.date ? formatDate(`${booking.date}T12:00:00`, "EEEE, d 'de' MMMM") : ""} às {booking.time}</p>
-        </div>
-        {quote?.benefit && quote.benefit.discountPercent > 0 && associateAnswer === "yes" ? (
-          <p className="text-xs text-emerald-700 font-medium pt-1">
-            Desconto de associado aplicado: {quote.benefit.discountPercent}% OFF
+          <p>
+            <strong className="text-foreground">{service?.name}</strong> ({service?.durationMin} min)
           </p>
+          <p>
+            {booking.date ? formatDate(`${booking.date}T12:00:00`, "EEEE, d 'de' MMMM") : ""} às {booking.time}
+          </p>
+        </div>
+
+        {/* Pricing breakdown for active associate discount */}
+        {associateAnswer === "yes" && membership?.status === "active" && quote?.discountApplied ? (
+          <p className="text-xs text-emerald-700 font-medium pt-1">
+            Desconto de associado aplicado: {effectiveRules.consultationDiscountPercent}% OFF ({formatMoney(quote.savings)} de economia)
+          </p>
+        ) : null}
+
+        {/* Pricing breakdown for overdue settlement */}
+        {associateAnswer === "yes" && membership?.status === "overdue" && settleAssociateFee && quote ? (
+          <div className="pt-2 border-t text-xs space-y-1">
+            <div className="flex justify-between text-muted-foreground">
+              <span>Consulta com {effectiveRules.consultationDiscountPercent}% OFF:</span>
+              <span className="font-medium text-foreground">{formatMoney(quote.consultationPrice)}</span>
+            </div>
+            <div className="flex justify-between text-amber-800">
+              <span>Quitação de pendência ({membership.overdueMonths}x mensalidade):</span>
+              <span className="font-medium">+{formatMoney(quote.overdueSettlementFee)}</span>
+            </div>
+            <div className="flex justify-between font-semibold text-foreground pt-1 border-t">
+              <span>Total a pagar:</span>
+              <span>{formatMoney(finalPrice)}</span>
+            </div>
+          </div>
         ) : null}
       </section>
 
@@ -239,7 +348,7 @@ export function PaymentView() {
       <section className="surface-card p-4 space-y-3">
         <h2 className="font-semibold text-sm">Você é associado?</h2>
         <p className="text-xs text-muted-foreground">
-          Associados ativos ganham desconto na consulta. A verificação é feita pelo seu CPF.
+          Associados ativos ganham desconto na consulta. A verificação é feita automaticamente pelo seu CPF.
         </p>
         <div className="grid grid-cols-2 gap-2">
           <Button
@@ -257,31 +366,161 @@ export function PaymentView() {
             Não sou associado
           </Button>
         </div>
-        {associateAnswer === "yes" && associate ? (
+
+        {/* Non-Associate High-Converting Savings CTA Card */}
+        {associateAnswer === "no" ? (
+          <div className="rounded-2xl border border-teal/20 bg-teal/5 p-4 mt-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold text-teal text-sm">
+                  Economize {formatMoney(potentialSavings)} nesta consulta!
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Associe-se por apenas {formatMoney(effectiveRules.fee)}/mês e ganhe descontos em todas as consultas e exames.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                type="button"
+                className="shrink-0 bg-teal text-white hover:bg-teal/90"
+                onClick={() => setShowSubscribeModal(true)}
+              >
+                Quero me associar
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Associate: Checking */}
+        {associateAnswer === "yes" && loadingMembership ? (
+          <div className="flex items-center gap-2 p-3 text-xs text-muted-foreground">
+            <Loader2 className="size-4 animate-spin text-teal" /> Verificando dados da associação...
+          </div>
+        ) : null}
+
+        {/* Associate: Active status */}
+        {associateAnswer === "yes" && !loadingMembership && membership?.status === "active" ? (
           <p className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 p-2.5 rounded-xl font-medium">
-            <BadgeCheck className="size-4 shrink-0" /> Associação confirmada para seu CPF.
+            <BadgeCheck className="size-4 shrink-0" /> Associação confirmada para seu CPF. Desconto aplicado!
           </p>
         ) : null}
-        {associateAnswer === "yes" && !associate ? (
-          <div className="bg-amber-50 p-3 rounded-xl text-xs text-amber-900 space-y-2">
-            <p>Nenhuma associação ativa foi encontrada para o CPF desta conta.</p>
-            <div className="flex gap-3">
+
+        {/* Associate: Overdue status decision flow */}
+        {associateAnswer === "yes" && !loadingMembership && membership?.status === "overdue" ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="size-4 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-xs text-amber-900">
+                  Mensalidade em atraso ({membership.overdueMonths} {membership.overdueMonths === 1 ? "mês" : "meses"})
+                </p>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  Para utilizar o desconto de associado nesta consulta, você pode quitar a mensalidade pendente agora:
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              {/* Option A: Settle overdue + discounted consultation */}
               <button
                 type="button"
-                className="font-medium underline"
+                onClick={() => setSettleAssociateFee(true)}
+                className={`w-full flex items-start gap-3 p-3 rounded-xl border text-left text-xs transition-colors ${
+                  settleAssociateFee
+                    ? "border-teal bg-white ring-2 ring-teal"
+                    : "border-border bg-white/70 text-muted-foreground hover:bg-white"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="settleOverdue"
+                  checked={settleAssociateFee}
+                  onChange={() => setSettleAssociateFee(true)}
+                  className="mt-0.5 text-teal focus:ring-teal"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-foreground">
+                      Quitar pendência ({formatMoney(membership.pendingAmount)}) + Consulta com desconto
+                    </span>
+                    <span className="text-[10px] bg-teal/10 text-teal px-1.5 py-0.5 rounded font-medium ml-1">
+                      Recomendado
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Total: {formatMoney((quote?.consultationPrice ?? 0) + membership.pendingAmount)} (consulta sai por {formatMoney(quote?.consultationPrice ?? 0)} com {effectiveRules.consultationDiscountPercent}% OFF)
+                  </p>
+                </div>
+              </button>
+
+              {/* Option B: Pay full price without settling now */}
+              <button
+                type="button"
+                onClick={() => setSettleAssociateFee(false)}
+                className={`w-full flex items-start gap-3 p-3 rounded-xl border text-left text-xs transition-colors ${
+                  !settleAssociateFee
+                    ? "border-teal bg-white ring-2 ring-teal"
+                    : "border-border bg-white/70 text-muted-foreground hover:bg-white"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="settleOverdue"
+                  checked={!settleAssociateFee}
+                  onChange={() => setSettleAssociateFee(false)}
+                  className="mt-0.5 text-teal focus:ring-teal"
+                />
+                <div className="flex-1">
+                  <span className="font-semibold text-foreground">
+                    Pagar consulta valor normal ({formatMoney(service?.price ?? 0)}) sem quitar agora
+                  </span>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Você não recebe o desconto nesta consulta e a pendência permanecerá em aberto.
+                  </p>
+                </div>
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Associate: None or Cancelled status */}
+        {associateAnswer === "yes" &&
+        !loadingMembership &&
+        (!membership || membership.status === "none" || membership.status === "cancelled") ? (
+          <div className="bg-amber-50 p-3.5 rounded-2xl border border-amber-200 text-xs text-amber-900 space-y-2.5">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="size-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">Nenhuma associação ativa encontrada para o seu CPF.</p>
+                <p className="text-amber-800 mt-0.5">
+                  {membership?.status === "cancelled"
+                    ? "Sua associação anterior foi cancelada por inadimplência. Reative agora para ter desconto!"
+                    : "Deseja se associar agora e garantir desconto nesta e nas próximas consultas?"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 pt-1">
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 text-xs bg-teal hover:bg-teal/90 text-white"
+                onClick={() => setShowSubscribeModal(true)}
+              >
+                Associar agora
+              </Button>
+              <button
+                type="button"
+                className="font-medium text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
                 onClick={() => setAssociateAnswer("no")}
               >
                 Continuar sem desconto
               </button>
-              <Link href="/mobile/perfil" className="font-medium underline">
-                Ver planos
-              </Link>
             </div>
           </div>
         ) : null}
       </section>
 
-      {/* Payment method */}
+      {/* Payment method selector */}
       {associateAnswer ? (
         <section className="surface-card p-4 space-y-3">
           <h2 className="font-semibold text-sm">Forma de pagamento</h2>
@@ -327,14 +566,33 @@ export function PaymentView() {
           <Button
             type="button"
             className="w-full h-12 mt-2"
-            disabled={processing || belowMinimum || (associateAnswer === "yes" && !associate)}
+            disabled={
+              processing ||
+              belowMinimum ||
+              loadingMembership ||
+              (associateAnswer === "yes" &&
+                (!membership || membership.status === "none" || membership.status === "cancelled"))
+            }
             onClick={() => void handlePay()}
           >
             {processing ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
-            {billingType === "PIX" ? `Gerar Pix · ${formatMoney(finalPrice)}` : `Pagar com Cartão · ${formatMoney(finalPrice)}`}
+            {billingType === "PIX"
+              ? `Gerar Pix · ${formatMoney(finalPrice)}`
+              : `Pagar com Cartão · ${formatMoney(finalPrice)}`}
           </Button>
         </section>
       ) : null}
+
+      {/* Subscription Modal */}
+      <AssociateSubscriptionModal
+        open={showSubscribeModal}
+        onOpenChange={setShowSubscribeModal}
+        rules={effectiveRules}
+        onSubscribed={() => {
+          loadMembership()
+          setAssociateAnswer("yes")
+        }}
+      />
     </div>
   )
 }

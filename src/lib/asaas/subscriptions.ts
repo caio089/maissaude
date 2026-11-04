@@ -9,7 +9,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin"
 
 export type CreateAsaasSubscriptionInput = EnsureAsaasCustomerInput & {
   value: number
-  billingType?: Extract<AsaasBillingType, "PIX" | "BOLETO">
+  billingType?: Extract<AsaasBillingType, "PIX" | "BOLETO" | "CREDIT_CARD">
   nextDueDate?: string
   associateId?: string
   externalReference?: string

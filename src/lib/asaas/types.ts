@@ -25,6 +25,7 @@ export type AsaasPayment = {
   value?: number
   dueDate?: string
   invoiceUrl?: string
+  bankSlipUrl?: string
   externalReference?: string
   description?: string
   paymentLink?: string

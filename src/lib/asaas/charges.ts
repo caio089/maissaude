@@ -10,7 +10,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin"
 
 export type CreateAsaasChargeInput = EnsureAsaasCustomerInput & {
   value: number
-  billingType: Extract<AsaasBillingType, "PIX" | "CREDIT_CARD">
+  billingType: Extract<AsaasBillingType, "PIX" | "CREDIT_CARD" | "BOLETO">
   dueDate?: string
   description?: string
   externalReference?: string
@@ -56,7 +56,27 @@ export async function createAsaasCharge(input: CreateAsaasChargeInput) {
     paymentId: input.paymentId,
   })
 
-  if (input.billingType !== "PIX" || !payment.id) return { customer, payment, pix: null, pixUnavailable: false }
+  if (input.billingType !== "PIX" || !payment.id) {
+    let identificationField: string | null = null
+    if (input.billingType === "BOLETO" && payment.id) {
+      try {
+        const slipInfo = await asaasFetch<{ identificationField?: string }>(`/payments/${payment.id}/identificationField`)
+        identificationField = slipInfo.identificationField || null
+      } catch {
+        // Continua com bankSlipUrl se a linha digitável falhar
+      }
+    }
+    const bankSlipUrl = input.billingType === "BOLETO" ? (payment.bankSlipUrl || payment.invoiceUrl || null) : null
+
+    return {
+      customer,
+      payment,
+      pix: null,
+      pixUnavailable: false,
+      bankSlipUrl,
+      identificationField,
+    }
+  }
 
   try {
     const pix = await asaasFetch<AsaasPixQrCode>(`/payments/${payment.id}/pixQrCode`)
@@ -66,11 +86,25 @@ export async function createAsaasCharge(input: CreateAsaasChargeInput) {
       paymentId: input.paymentId,
       pixPayload: pix.payload,
     })
-    return { customer, payment, pix, pixUnavailable: false }
+    return {
+      customer,
+      payment,
+      pix,
+      pixUnavailable: false,
+      bankSlipUrl: null,
+      identificationField: null,
+    }
   } catch {
     // The payment and its local link were successfully persisted. The user can
     // still use invoiceUrl or find the charge in Asaas while its QR is retried.
-    return { customer, payment, pix: null, pixUnavailable: true }
+    return {
+      customer,
+      payment,
+      pix: null,
+      pixUnavailable: true,
+      bankSlipUrl: null,
+      identificationField: null,
+    }
   }
 }
 

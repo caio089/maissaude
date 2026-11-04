@@ -350,6 +350,8 @@ export const useDemoStore = create<DemoStore>()(
           phone: input.phone.trim(),
           email: input.email.trim(),
           status: input.status,
+          overdueMonths: input.overdueMonths ?? 0,
+          nextDueDate: input.nextDueDate ?? null,
           createdAt: formatISO(new Date()),
         }
         set((state) => ({ associates: [associate, ...state.associates] }))
@@ -371,6 +373,8 @@ export const useDemoStore = create<DemoStore>()(
                   phone: input.phone.trim(),
                   email: input.email.trim(),
                   status: input.status,
+                  overdueMonths: input.overdueMonths ?? 0,
+                  nextDueDate: input.nextDueDate ?? null,
                 }
               : associate,
           ),

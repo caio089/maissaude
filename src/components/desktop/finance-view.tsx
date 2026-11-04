@@ -400,8 +400,6 @@ function ReceiptDialog({ payment, patients, onOpenChange }: { payment: Payment |
   return (
     <Dialog open={Boolean(payment)} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden sm:max-w-md">
-        <div className="pointer-events-none absolute inset-0 grid place-items-center">
-        </div>
         <DialogHeader>
           <DialogTitle>Comprovante</DialogTitle>
           <DialogDescription>Comprovante de pagamento registrado no sistema.</DialogDescription>

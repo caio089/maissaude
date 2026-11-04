@@ -32,14 +32,14 @@ export function MobileHome() {
   return (
     <div className="space-y-6 px-5 pt-5 pb-6">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium tracking-wide text-teal">{data.clinic.name} · demo</p>
+        <p className="text-xs font-medium tracking-wide text-teal">{data.clinic.name}</p>
         <button type="button" onClick={() => setCityOpen(true)} className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs ring-1 ring-border">
           <MapPin className="size-3" /> {city}
         </button>
       </div>
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">{greeting(now)}, {firstName(patient?.name ?? "Helena")}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Encontre um horário na unidade demonstrativa.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Encontre um horário na unidade de atendimento.</p>
       </div>
       <form
         onSubmit={(event) => {
@@ -77,7 +77,7 @@ export function MobileHome() {
       ) : (
         <div className="rounded-3xl bg-white p-5 ring-1 ring-border">
           <p className="text-sm font-medium">Nenhuma consulta futura</p>
-          <p className="mt-1 text-sm text-muted-foreground">Escolha um profissional e simule um agendamento.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Escolha um profissional e faça seu agendamento.</p>
         </div>
       )}
       <Button asChild className="h-12 w-full rounded-2xl">
@@ -97,7 +97,7 @@ export function MobileHome() {
         </div>
       </section>
       {city !== "Teresina - PI" ? (
-        <p className="rounded-2xl bg-amber-50 px-4 py-3 text-xs text-amber-900">A unidade demonstrativa continua em Teresina - PI. A cidade selecionada só muda o contexto da simulação.</p>
+        <p className="rounded-2xl bg-amber-50 px-4 py-3 text-xs text-amber-900">A unidade de atendimento está localizada em Teresina - PI.</p>
       ) : null}
       <CitySheet open={cityOpen} city={city} onOpenChange={setCityOpen} onSelect={setCity} />
     </div>

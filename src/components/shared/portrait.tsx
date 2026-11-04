@@ -28,7 +28,7 @@ export function Portrait({
   return (
     <img
       src={portraitUri(seed)}
-      alt={`Ilustração demonstrativa de ${name}`}
+      alt={`Foto de ${name}`}
       className={`${className} rounded-full object-cover ring-1 ring-foreground/10`}
     />
   )

@@ -62,7 +62,6 @@ export function ProfessionalView({ id }: { id: string }) {
             <p className="inline-flex items-center gap-1 text-sm">
               <Star className="size-4 fill-amber-400 text-amber-400" />
               {(professional.rating ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-              <span className="text-xs text-muted-foreground">demo</span>
             </p>
           </div>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">{professional.bio}</p>

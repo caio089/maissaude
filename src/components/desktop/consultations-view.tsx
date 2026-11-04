@@ -107,7 +107,7 @@ export function ConsultationsView() {
     const endsAt = startsAt + service.duration_min * 60000
     const conflict = local.appointments.some((item) => item.professionalId === professionalId && ["scheduled", "confirmed"].includes(item.status) && new Date(item.startsAt).getTime() < endsAt && new Date(item.endsAt).getTime() > startsAt)
       || local.blockedSlots.some((item) => item.professionalId === professionalId && new Date(item.startsAt).getTime() < endsAt && new Date(item.endsAt).getTime() > startsAt)
-    if (conflict) { toast.error("Esse horário já está ocupado ou bloqueado na agenda deste navegador."); return }
+    if (conflict) { toast.error("Esse horário já está ocupado ou bloqueado na agenda."); return }
     setSaving(true)
     try {
       const response = await fetch("/api/desktop/consultations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ patientId: patient.id, patient: patient.snapshot, professionalId: professional.id, professional: professional.snapshot, serviceId, date, time, billingType }) })

@@ -96,7 +96,7 @@ export function BookingView() {
         {step === 1 ? (professional?.services ?? []).map((item) => (
           <button key={item.id} type="button" onClick={() => patchBooking({ serviceId: item.id, time: null })} className={`block w-full rounded-2xl px-4 py-3 text-left ${booking.serviceId === item.id ? "bg-accent ring-1 ring-teal" : "bg-white ring-1 ring-border"}`}>
             <span className="block text-sm font-medium">{item.name}</span>
-            <span className="text-xs text-muted-foreground">{item.durationMin} min · {item.modality === "teleconsulta" ? "teleconsulta demonstrativa" : "presencial"} · {formatMoney(item.price)}</span>
+            <span className="text-xs text-muted-foreground">{item.durationMin} min · {item.modality === "teleconsulta" ? "teleconsulta" : "presencial"} · {formatMoney(item.price)}</span>
           </button>
         )) : null}
 

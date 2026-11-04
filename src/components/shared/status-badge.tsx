@@ -27,7 +27,7 @@ export function StatusBadge({ status }: { status: AppointmentStatus }) {
 export function PaymentBadge({ status }: { status: PaymentStatus }) {
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${paymentClass[status]}`}>
-      {PAYMENT_STATUS_LABEL[status]} · simulado
+      {PAYMENT_STATUS_LABEL[status]}
     </span>
   )
 }

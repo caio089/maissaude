@@ -248,7 +248,7 @@ export function AgendaView() {
         <div>
           <p className="section-kicker">Unidade</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Agenda</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Horários da unidade demonstrativa. Reservas do aplicativo entram aqui automaticamente.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Horários da unidade de atendimento. Reservas do aplicativo entram aqui automaticamente.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={() => setBlockOpen(true)}>
@@ -627,7 +627,7 @@ function AppointmentDetails({
       <div className="space-y-3 text-sm">
         <StatusBadge status={appointment.status} />
         <p className="text-muted-foreground">{appointment.notes}</p>
-        <p className="text-xs text-muted-foreground">Origem: {appointment.origin === "mobile" ? "aplicativo do paciente" : appointment.origin === "desktop" ? "painel" : "roteiro inicial"}.</p>
+        <p className="text-xs text-muted-foreground">Origem: {appointment.origin === "mobile" ? "aplicativo do paciente" : appointment.origin === "desktop" ? "painel" : "sistema"}.</p>
       </div>
       {closed ? null : (
         <div className="grid gap-3">

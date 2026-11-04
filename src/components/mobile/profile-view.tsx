@@ -107,7 +107,7 @@ export function MobileProfile() {
         </label>
         <label className="mt-3 block text-sm">
           Cidade de atendimento
-          <select className="mt-1 h-10 w-full rounded-lg border bg-white px-3" value={city} onChange={(event) => setCity(event.target.value)}>
+          <select aria-label="Cidade de atendimento" className="mt-1 h-10 w-full rounded-lg border bg-white px-3" value={city} onChange={(event) => setCity(event.target.value)}>
             {DEMO_CITIES.map((item) => <option key={item}>{item}</option>)}
           </select>
         </label>

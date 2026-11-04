@@ -19,6 +19,7 @@ import type { Associate, AssociateInput, AssociateStatus, Patient } from "@/lib/
 import { hasErrors, validateAssociateInput, type FieldErrors } from "@/lib/validation"
 
 type BillingType = "PIX" | "BOLETO" | "CREDIT_CARD"
+type StatusFilter = "all" | "active" | "overdue" | "cancelled"
 
 type PaymentResult = {
   billingType: BillingType
@@ -37,6 +38,7 @@ export function AssociatesView() {
   const createAssociate = useDemoStore((state) => state.createAssociate)
   const updateAssociate = useDemoStore((state) => state.updateAssociate)
   const [query, setQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Associate | null>(null)
   const [form, setForm] = useState<AssociateInput>(() => emptyAssociateForm())
@@ -111,13 +113,35 @@ export function AssociatesView() {
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
   }, [localPatients, serverPatients, patientQuery])
 
+  const counts = useMemo(() => {
+    let active = 0
+    let overdue = 0
+    let cancelled = 0
+    for (const item of allAssociates) {
+      if (item.status === "active") active++
+      else if (item.status === "overdue") overdue++
+      else if (item.status === "cancelled") cancelled++
+    }
+    return {
+      all: allAssociates.length,
+      active,
+      overdue,
+      cancelled,
+    }
+  }, [allAssociates])
+
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase()
-    if (!term) return allAssociates
-    return allAssociates.filter((associate) =>
-      [associate.name, associate.cpf, associate.phone, associate.email].some((value) => value.toLowerCase().includes(term)),
-    )
-  }, [allAssociates, query])
+    return allAssociates.filter((associate) => {
+      if (statusFilter !== "all" && associate.status !== statusFilter) {
+        return false
+      }
+      if (!term) return true
+      return [associate.name, associate.cpf, associate.phone, associate.email].some((value) =>
+        value.toLowerCase().includes(term),
+      )
+    })
+  }, [allAssociates, query, statusFilter])
 
   function openCreate() {
     setEditing(null)
@@ -414,9 +438,110 @@ export function AssociatesView() {
       <AssociateRulesCard />
 
       <div className="panel p-3">
-        <div className="relative max-w-md">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nome, CPF, telefone ou e-mail" aria-label="Pesquisar associados" className="h-10 pl-9" />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full max-w-md">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Nome, CPF, telefone ou e-mail"
+              aria-label="Pesquisar associados"
+              className="h-10 pl-9"
+            />
+          </div>
+
+          <div
+            className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-muted/40 p-1"
+            role="tablist"
+            aria-label="Filtrar associados por status"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={statusFilter === "all"}
+              onClick={() => setStatusFilter("all")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                statusFilter === "all"
+                  ? "bg-background text-foreground shadow-xs font-semibold"
+                  : "text-muted-foreground hover:bg-background/50 hover:text-foreground"
+              }`}
+            >
+              Todos
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
+                  statusFilter === "all" ? "bg-muted text-foreground" : "bg-muted/80 text-muted-foreground"
+                }`}
+              >
+                {counts.all}
+              </span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={statusFilter === "active"}
+              onClick={() => setStatusFilter("active")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                statusFilter === "active"
+                  ? "bg-background text-emerald-700 shadow-xs font-semibold dark:text-emerald-400"
+                  : "text-muted-foreground hover:bg-background/50 hover:text-foreground"
+              }`}
+            >
+              Em dia
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
+                  statusFilter === "active"
+                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                    : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {counts.active}
+              </span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={statusFilter === "overdue"}
+              onClick={() => setStatusFilter("overdue")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                statusFilter === "overdue"
+                  ? "bg-background text-amber-700 shadow-xs font-semibold dark:text-amber-400"
+                  : "text-muted-foreground hover:bg-background/50 hover:text-foreground"
+              }`}
+            >
+              Em atraso
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
+                  statusFilter === "overdue"
+                    ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                    : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {counts.overdue}
+              </span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={statusFilter === "cancelled"}
+              onClick={() => setStatusFilter("cancelled")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                statusFilter === "cancelled"
+                  ? "bg-background text-rose-700 shadow-xs font-semibold dark:text-rose-400"
+                  : "text-muted-foreground hover:bg-background/50 hover:text-foreground"
+              }`}
+            >
+              Cancelados
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
+                  statusFilter === "cancelled"
+                    ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                    : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {counts.cancelled}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -424,9 +549,30 @@ export function AssociatesView() {
         {filtered.length === 0 ? (
           <EmptyState
             icon={IdCard}
-            title="Nenhum associado cadastrado"
-            description="Cadastre os associados e acompanhe os benefícios vinculados ao plano."
-            action={<Button type="button" onClick={openCreate}>Cadastrar</Button>}
+            title={statusFilter !== "all" || query ? "Nenhum associado encontrado" : "Nenhum associado cadastrado"}
+            description={
+              statusFilter !== "all" || query
+                ? "Tente ajustar o filtro de status ou os termos da pesquisa."
+                : "Cadastre os associados e acompanhe os benefícios vinculados ao plano."
+            }
+            action={
+              statusFilter !== "all" || query ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setStatusFilter("all")
+                    setQuery("")
+                  }}
+                >
+                  Limpar filtros
+                </Button>
+              ) : (
+                <Button type="button" onClick={openCreate}>
+                  Cadastrar
+                </Button>
+              )
+            }
           />
         ) : (
           <Table>

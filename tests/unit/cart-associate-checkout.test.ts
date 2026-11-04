@@ -380,6 +380,66 @@ describe("POST /api/payments/cart route", () => {
     expect(body.charges[0].value).toBe(125)
   })
 
+  it("grava metadados de quitação no pagamento mas não perdoa dívida antecipadamente se cobrança Asaas estiver PENDING", async () => {
+    let insertedPayment: any = null
+    const baseAdmin = createMockAdmin({
+      associate: {
+        id: "ass-1",
+        name: "Carlos Souza",
+        cpf: "98765432111",
+        status: "overdue",
+        overdue_months: 1,
+      },
+    })
+    const mockAdmin = {
+      from: vi.fn((table: string) => {
+        if (table === "payments") {
+          return {
+            insert: vi.fn((payload) => {
+              insertedPayment = payload
+              return Promise.resolve({ error: null })
+            }),
+            delete: vi.fn().mockReturnValue({ in: vi.fn().mockResolvedValue({ error: null }) }),
+          }
+        }
+        return (baseAdmin as any).from(table)
+      }),
+    }
+
+    vi.spyOn(supabaseAdminModule, "createSupabaseAdmin").mockReturnValue(mockAdmin as any)
+    vi.spyOn(chargesModule, "createAsaasCharge").mockResolvedValue({
+      customer: { id: "cus_1" } as any,
+      payment: { id: "pay_asaas_pending", status: "PENDING", invoiceUrl: "https://asaas.com/i/p" } as any,
+      pix: { payload: "pix_code", encodedImage: "pix_img" } as any,
+      pixUnavailable: false,
+      bankSlipUrl: null,
+      identificationField: null,
+    })
+
+    const req = new Request("http://localhost/api/payments/cart", {
+      method: "POST",
+      body: JSON.stringify({
+        lines: [sampleLine],
+        billingType: "PIX",
+        associateAnswer: "yes",
+        settleAssociateFee: true,
+      }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+
+    // O pagamento gravado possui os metadados de quitação para ativação via webhook
+    expect(insertedPayment).not.toBeNull()
+    expect(insertedPayment.metadata).toEqual({
+      settleAssociateFee: true,
+      associateId: "ass-1",
+      settlementFee: 35,
+    })
+
+    // O associado NÃO deve ser reativado antecipadamente enquanto a cobrança estiver PENDING
+    expect(associateUpdateSpy).not.toHaveBeenCalled()
+  })
+
   it("processa checkout com settleAssociateFee: false para associado em atraso sem quitar e sem desconto", async () => {
     const mockAdmin = createMockAdmin({
       associate: {

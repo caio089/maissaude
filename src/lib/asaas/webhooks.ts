@@ -145,27 +145,52 @@ async function applyWebhookSideEffects(payload: AsaasWebhookPayload) {
     invoice_url: payment.invoiceUrl || null,
     paid_at: localStatus === "paid" ? new Date().toISOString() : null,
   }
-  const { data: linkedPayments, error: paymentUpdateError } = await admin
+  let linkedPayments: any[] | null = null
+  const { data: lpWithMeta, error: paymentUpdateError } = await admin
     .from("payments")
     .update(update)
     .eq("asaas_payment_id", payment.id)
-    .select("id, appointment_id")
-  if (paymentUpdateError) throw new Error("Não foi possível atualizar o pagamento confirmado.")
+    .select("id, appointment_id, metadata, description, patient_id")
+
+  if (paymentUpdateError) {
+    const { data: lpFallback, error: fallbackError } = await admin
+      .from("payments")
+      .update(update)
+      .eq("asaas_payment_id", payment.id)
+      .select("id, appointment_id, description, patient_id")
+    if (fallbackError) throw new Error("Não foi possível atualizar o pagamento confirmado.")
+    linkedPayments = lpFallback
+  } else {
+    linkedPayments = lpWithMeta
+  }
 
   let appointmentIds: string[] = (linkedPayments || [])
     .map((item) => item.appointment_id)
     .filter((id): id is string => Boolean(id))
 
+  let refPayments: any[] = []
   // The webhook can arrive before charge creation has linked the Asaas ID.
   // Only use the unique reference from the payment fetched directly from Asaas.
   if (!linkedPayments?.length && payment.externalReference) {
-    const { data: refPayments, error: referenceError } = await admin
+    const { data: refWithMeta, error: referenceError } = await admin
       .from("payments")
       .update({ ...update, asaas_payment_id: payment.id })
       .eq("reference", payment.externalReference)
       .is("asaas_payment_id", null)
-      .select("id, appointment_id")
-    if (referenceError) throw new Error("Não foi possível vincular o pagamento confirmado.")
+      .select("id, appointment_id, metadata, description, patient_id")
+
+    if (referenceError) {
+      const { data: refFallback, error: refFallbackError } = await admin
+        .from("payments")
+        .update({ ...update, asaas_payment_id: payment.id })
+        .eq("reference", payment.externalReference)
+        .is("asaas_payment_id", null)
+        .select("id, appointment_id, description, patient_id")
+      if (refFallbackError) throw new Error("Não foi possível vincular o pagamento confirmado.")
+      refPayments = refFallback || []
+    } else {
+      refPayments = refWithMeta || []
+    }
     appointmentIds = (refPayments || [])
       .map((item) => item.appointment_id)
       .filter((id): id is string => Boolean(id))
@@ -190,6 +215,23 @@ async function applyWebhookSideEffects(payload: AsaasWebhookPayload) {
     }
   }
 
+  // 1. Quitação de cobrança avulsa / multicanal de associado (via externalReference = "associate:<id>" ou link)
+  let directAssociateId: string | null = null
+  if (payment.externalReference?.startsWith("associate:")) {
+    directAssociateId = payment.externalReference.slice("associate:".length).trim()
+  } else if (associateId) {
+    directAssociateId = associateId
+  }
+
+  if (directAssociateId && localStatus === "paid") {
+    await admin.from("associates").update({
+      status: "active",
+      overdue_months: 0,
+      last_paid_at: new Date().toISOString(),
+    }).eq("id", directAssociateId)
+  }
+
+  // 2. Confirmação de assinatura recorrente
   if (payment.subscription && localStatus === "paid") {
     const { data: subscription } = await admin
       .from("asaas_subscriptions")
@@ -197,8 +239,54 @@ async function applyWebhookSideEffects(payload: AsaasWebhookPayload) {
       .eq("id", payment.subscription)
       .maybeSingle()
     if (subscription?.associate_id) {
-      await admin.from("associates").update({ status: "active" }).eq("id", subscription.associate_id)
+      await admin.from("associates").update({
+        status: "active",
+        overdue_months: 0,
+        last_paid_at: new Date().toISOString(),
+      }).eq("id", subscription.associate_id)
     }
+  }
+
+  // 3. Quitação de taxa de associado liquidada através do carrinho de agendamentos
+  if (localStatus === "paid") {
+    const allConfirmedPayments = [...(linkedPayments || []), ...refPayments]
+    for (const item of allConfirmedPayments) {
+      const meta = typeof item.metadata === "string" ? safeJsonParse(item.metadata) : item.metadata
+      const isSettlement =
+        Boolean(meta?.settleAssociateFee) ||
+        Boolean(item.description?.includes("quitação de mensalidade"))
+      const targetAssociateId = meta?.associateId
+      if (isSettlement && targetAssociateId) {
+        await admin.from("associates").update({
+          status: "active",
+          overdue_months: 0,
+          last_paid_at: new Date().toISOString(),
+        }).eq("id", targetAssociateId)
+      } else if (isSettlement && item.patient_id) {
+        const { data: patientRow } = await admin
+          .from("patients")
+          .select("cpf")
+          .eq("id", item.patient_id)
+          .maybeSingle()
+        if (patientRow?.cpf) {
+          const rawCpf = patientRow.cpf.replace(/\D/g, "")
+          await admin.from("associates").update({
+            status: "active",
+            overdue_months: 0,
+            last_paid_at: new Date().toISOString(),
+          }).in("cpf", [rawCpf, patientRow.cpf])
+        }
+      }
+    }
+  }
+}
+
+function safeJsonParse(value: unknown) {
+  if (typeof value !== "string") return null
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
   }
 }
 

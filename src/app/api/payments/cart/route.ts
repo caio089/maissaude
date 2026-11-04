@@ -252,6 +252,7 @@ export async function POST(request: Request) {
       paymentId: string
       value: number
       billingType: BillingType
+      status?: string
       invoiceUrl: string | null
       pix: { payload: string | null; encodedImage: string | null } | null
       pixUnavailable: boolean
@@ -288,6 +289,15 @@ export async function POST(request: Request) {
         const settlementText = item.settlementFee > 0 ? " · quitação de mensalidade associado" : ""
         const paymentDescription = `${item.service.name}${discountText}${settlementText}`
 
+        const paymentMetadata =
+          body.settleAssociateFee && associate && item.settlementFee > 0
+            ? {
+                settleAssociateFee: true,
+                associateId: associate.id,
+                settlementFee: item.settlementFee,
+              }
+            : null
+
         const { error: paymentError } = await admin.from("payments").insert({
           id: paymentId,
           appointment_id: appointmentId,
@@ -299,6 +309,7 @@ export async function POST(request: Request) {
           reference,
           simulated: false,
           description: paymentDescription,
+          ...(paymentMetadata ? { metadata: paymentMetadata } : {}),
         })
         if (paymentError) throw new Error(paymentError.message)
         createdPayments.push(paymentId)
@@ -326,6 +337,7 @@ export async function POST(request: Request) {
           paymentId,
           value: item.totalAmount,
           billingType: body.billingType,
+          status: result.payment.status,
           invoiceUrl: result.payment.invoiceUrl || null,
           pix: result.pix ? { payload: result.pix.payload || null, encodedImage: result.pix.encodedImage || null } : null,
           pixUnavailable: result.pixUnavailable,
@@ -334,7 +346,16 @@ export async function POST(request: Request) {
       }
 
       const totalSettlementPaid = preparedLines.reduce((sum, line) => sum + line.settlementFee, 0)
-      if (body.settleAssociateFee && associate && totalSettlementPaid > 0) {
+      const isImmediatelySettled = charges.every(
+        (c) =>
+          c.status === "CONFIRMED" ||
+          c.status === "RECEIVED" ||
+          c.status === "RECEIVED_IN_CASH" ||
+          (c as any).simulated === true ||
+          c.status === undefined,
+      )
+
+      if (body.settleAssociateFee && associate && totalSettlementPaid > 0 && isImmediatelySettled) {
         await admin
           .from("associates")
           .update({

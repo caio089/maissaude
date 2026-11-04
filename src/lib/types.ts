@@ -122,6 +122,7 @@ export interface Payment {
   description: string
   invoiceUrl?: string
   pixPayload?: string
+  metadata?: Record<string, any> | null
 }
 
 export interface PrescriptionItem {

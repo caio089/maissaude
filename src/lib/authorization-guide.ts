@@ -111,9 +111,14 @@ export async function createAuthorizationGuide(input: AuthorizationGuideInput) {
     y += 18
   }
 
+  const normalizedProName = input.professional.name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
   const isGeneralClinic =
-    input.professional.name.trim().toLowerCase() === "geral da clínica" ||
-    input.professional.name.trim().toLowerCase() === "corpo clínico"
+    normalizedProName === "geral da clinica" ||
+    normalizedProName === "corpo clinico"
 
   let photoToLoad: string | null = null
   if (!isGeneralClinic) {
@@ -155,7 +160,7 @@ export async function createAuthorizationGuide(input: AuthorizationGuideInput) {
     ["Telefone de contato", formattedPhone],
     ["Data e horário agendado", formattedAppointment, true],
     ["Endereço completo", fullAddress],
-    ["Município / UF", `${city.municipio} · ${city.uf}`],
+    ["Município / UF", city.uf ? `${city.municipio} · ${city.uf}` : city.municipio],
   ])
   y += 18
 

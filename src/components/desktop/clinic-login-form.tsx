@@ -19,13 +19,12 @@ export function ClinicLoginForm() {
           name="email"
           type="email"
           autoComplete="username"
-          value={CLINIC_AUTH_EMAIL}
-          readOnly
-          aria-readonly="true"
+          defaultValue={CLINIC_AUTH_EMAIL}
+          placeholder="Seu e-mail da clínica"
           required
           className="h-11"
         />
-        <p className="mt-1 text-xs text-muted-foreground">O e-mail da clínica já está preenchido.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Informe seu e-mail cadastrado na equipe da clínica.</p>
       </Field>
       <Field label="Senha" htmlFor="clinic-password">
         <Input

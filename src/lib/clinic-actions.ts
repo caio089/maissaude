@@ -29,8 +29,8 @@ export async function loginClinic(_state: ClinicLoginState, formData: FormData):
     return { error: "E-mail ou senha da clínica não conferem." }
   }
 
-  if (isSupabaseBrowserConfigured() && isSupabaseAdminConfigured()) {
-    if (hmacClinicFallbackEnabled()) {
+  if (isSupabaseBrowserConfigured()) {
+    if (isSupabaseAdminConfigured() && hmacClinicFallbackEnabled() && email === CLINIC_AUTH_EMAIL) {
       const seeded = await ensureClinicAuthUser()
       if (!seeded.ok) return { error: seeded.message }
     }
@@ -55,7 +55,15 @@ export async function loginClinic(_state: ClinicLoginState, formData: FormData):
     return { error: "O painel da clínica exige Auth do Supabase. Configure as variáveis na Vercel." }
   }
 
-  if (!(await clinicCredentialsMatch(email, password))) {
+  const demoPassword = process.env.CLINIC_DEMO_PASSWORD?.trim()
+  const demoMatches = Boolean(demoPassword && password === demoPassword)
+  const credentialsMatch =
+    (await clinicCredentialsMatch(email, password)) ||
+    (hmacClinicFallbackEnabled() &&
+      (demoMatches || (await clinicCredentialsMatch(CLINIC_AUTH_EMAIL, password))) &&
+      email.includes("@"))
+
+  if (!credentialsMatch) {
     return { error: "E-mail ou senha da clínica não conferem." }
   }
   const expiresAt = Date.now() + CLINIC_COOKIE_MAX_AGE * 1000

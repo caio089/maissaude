@@ -27,7 +27,36 @@ import {
 } from "@/lib/types"
 import { hasErrors, MIN_PROFESSIONAL_PRICE, validateProfessionalInput } from "@/lib/validation"
 
-const MAX_PHOTO_BYTES = 1.5 * 1024 * 1024
+export const MAX_PHOTO_BYTES = 1.5 * 1024 * 1024
+
+export interface PhotoFileReader {
+  readAsDataURL: (blob: Blob | File) => void
+  onload: ((this: any, ev: any) => any) | null
+  result: string | ArrayBuffer | null
+}
+
+export function processPhotoFileInput(
+  inputElement: { files?: ArrayLike<Blob | File> | null; value: string },
+  onSuccess: (dataUrl: string) => void,
+  onError: (errorMessage: string) => void,
+  createReader: () => PhotoFileReader = () => new FileReader()
+): void {
+  const file = inputElement.files?.[0]
+  if (!file) return
+  if (file.size > MAX_PHOTO_BYTES) {
+    onError("A foto deve ter no máximo 1.5 MB.")
+    inputElement.value = ""
+    return
+  }
+  const reader = createReader()
+  reader.onload = () => {
+    if (typeof reader.result === "string") {
+      onSuccess(reader.result)
+    }
+    inputElement.value = ""
+  }
+  reader.readAsDataURL(file)
+}
 
 const blank = (): ProfessionalInput => ({
   name: "",
@@ -62,21 +91,116 @@ export function getProfessionalsViewMode(role?: ClinicRole | null): {
   }
 }
 
+export interface SpecialtyOption {
+  id: string
+  name: string
+}
+
+export function buildAvailableSpecialties(
+  apiSpecialties: SpecialtyOption[] = [],
+  selectedSpecialty?: string
+): SpecialtyOption[] {
+  const map = new Map<string, SpecialtyOption>()
+
+  for (const id of SPECIALTIES) {
+    map.set(id, { id, name: SPECIALTY_LABEL[id] || id })
+  }
+
+  for (const spec of apiSpecialties) {
+    if (spec?.id && spec?.name) {
+      map.set(spec.id, { id: spec.id, name: spec.name })
+    }
+  }
+
+  if (selectedSpecialty && !map.has(selectedSpecialty)) {
+    map.set(selectedSpecialty, {
+      id: selectedSpecialty,
+      name: SPECIALTY_LABEL[selectedSpecialty] || selectedSpecialty,
+    })
+  }
+
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+}
+
+export function buildSpecialtyLabelMap(
+  apiSpecialties: SpecialtyOption[] = []
+): Record<string, string> {
+  const map: Record<string, string> = { ...SPECIALTY_LABEL }
+  for (const spec of apiSpecialties) {
+    if (spec?.id && spec?.name) {
+      map[spec.id] = spec.name
+    }
+  }
+  return map
+}
+
+export async function createSpecialtyAction(
+  name: string,
+  fetchFn: typeof fetch = fetch
+): Promise<
+  | { success: true; specialty: SpecialtyOption }
+  | { success: false; error: string }
+> {
+  const trimmed = name?.trim() || ""
+  if (!trimmed) {
+    return { success: false, error: "Informe o nome da especialidade." }
+  }
+  if (trimmed.length < 3 || trimmed.length > 60) {
+    return {
+      success: false,
+      error: "O nome da especialidade deve ter entre 3 e 60 caracteres.",
+    }
+  }
+
+  try {
+    const res = await fetchFn("/api/desktop/specialties", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      return {
+        success: false,
+        error: data?.error || "Não foi possível cadastrar a especialidade.",
+      }
+    }
+    return {
+      success: true,
+      specialty: {
+        id: data.id,
+        name: data.name,
+      },
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro ao cadastrar a especialidade.",
+    }
+  }
+}
+
 export interface ProfessionalsViewProps {
   initialRole?: ClinicRole
   initialProfessionals?: Professional[]
+  initialSpecialties?: SpecialtyOption[]
 }
 
 export function ProfessionalsView({
   initialRole,
   initialProfessionals,
+  initialSpecialties,
 }: ProfessionalsViewProps = {}) {
   const router = useRouter()
   const [role, setRole] = useState<ClinicRole | null>(initialRole ?? null)
   const localProfessionals = useDemoStore((state) => state.data.professionals)
   const [serverProfessionals, setServerProfessionals] = useState<Professional[]>(initialProfessionals ?? [])
+  const [specialtiesList, setSpecialtiesList] = useState<SpecialtyOption[]>(initialSpecialties ?? [])
   const [loadError, setLoadError] = useState("")
   const [saving, setSaving] = useState(false)
+  const [isCreatingSpecialty, setIsCreatingSpecialty] = useState(false)
+  const [newSpecialtyName, setNewSpecialtyName] = useState("")
+  const [savingSpecialty, setSavingSpecialty] = useState(false)
   const professionals = useMemo(() => {
     const items = new Map(localProfessionals.map((professional) => [professional.id, professional]))
     for (const professional of serverProfessionals) items.set(professional.id, professional)
@@ -96,27 +220,55 @@ export function ProfessionalsView({
   const canManage = canManageProfessionals(role)
   const viewMode = getProfessionalsViewMode(role)
 
+  const specialtyLabelMap = useMemo(() => {
+    return buildSpecialtyLabelMap(specialtiesList)
+  }, [specialtiesList])
+
   const availableSpecialties = useMemo(() => {
-    const set = new Set<string>(SPECIALTIES)
-    if (form.specialty) set.add(form.specialty)
-    return Array.from(set)
-  }, [form.specialty])
+    return buildAvailableSpecialties(specialtiesList, form.specialty)
+  }, [specialtiesList, form.specialty])
 
   function handlePhotoFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) return
-    if (file.size > MAX_PHOTO_BYTES) {
-      toast.error("A foto deve ter no máximo 1.5 MB.")
-      event.target.value = ""
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setForm((prev) => ({ ...prev, photoUrl: reader.result as string }))
+    processPhotoFileInput(
+      event.target,
+      (photoUrl) => setForm((prev) => ({ ...prev, photoUrl })),
+      (msg) => toast.error(msg)
+    )
+  }
+
+  async function loadSpecialties() {
+    try {
+      const response = await fetch("/api/desktop/specialties", { cache: "no-store" })
+      if (!response.ok) return
+      const data = await response.json()
+      if (Array.isArray(data)) {
+        setSpecialtiesList(data)
       }
+    } catch {
+      // Falha silenciosa: mantém lista atual/fallback
     }
-    reader.readAsDataURL(file)
+  }
+
+  async function handleCreateSpecialty() {
+    setSavingSpecialty(true)
+    try {
+      const result = await createSpecialtyAction(newSpecialtyName)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setSpecialtiesList((prev) => {
+        const exists = prev.some((s) => s.id === result.specialty.id)
+        return exists ? prev : [...prev, result.specialty]
+      })
+      setForm((prev) => ({ ...prev, specialty: result.specialty.id }))
+      setIsCreatingSpecialty(false)
+      setNewSpecialtyName("")
+      toast.success(`Especialidade "${result.specialty.name}" cadastrada com sucesso.`)
+      void loadSpecialties()
+    } finally {
+      setSavingSpecialty(false)
+    }
   }
 
   async function refresh() {
@@ -135,6 +287,15 @@ export function ProfessionalsView({
       .then((sessionData) => {
         if (active && sessionData?.authenticated) {
           setRole(sessionData.role)
+        }
+      })
+      .catch(() => {})
+
+    fetch("/api/desktop/specialties", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (active && Array.isArray(data)) {
+          setSpecialtiesList(data)
         }
       })
       .catch(() => {})
@@ -163,6 +324,8 @@ export function ProfessionalsView({
     setForm(blank())
     setServices([])
     setErrors({})
+    setIsCreatingSpecialty(false)
+    setNewSpecialtyName("")
     setOpen(true)
   }
 
@@ -184,6 +347,8 @@ export function ProfessionalsView({
     })
     setServices(professional.services.map((service) => ({ ...service, kind: service.kind || "consulta" })))
     setErrors({})
+    setIsCreatingSpecialty(false)
+    setNewSpecialtyName("")
     setOpen(true)
   }
 
@@ -275,7 +440,7 @@ export function ProfessionalsView({
                 <Portrait seed={professional.avatarSeed} name={professional.name} photoUrl={professional.photoUrl} />
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">{professional.name}</span>
-                  <span className="block text-xs text-muted-foreground">{SPECIALTY_LABEL[professional.specialty] || professional.specialty}</span>
+                  <span className="block text-xs text-muted-foreground">{specialtyLabelMap[professional.specialty] || professional.specialty}</span>
                 </span>
               </button>
             ))
@@ -288,7 +453,7 @@ export function ProfessionalsView({
                 <Portrait seed={selected.avatarSeed} name={selected.name} photoUrl={selected.photoUrl} className="size-20" />
                 <div>
                   <h2 className="text-2xl font-semibold">{selected.name}</h2>
-                  <p className="text-sm text-muted-foreground">{SPECIALTY_LABEL[selected.specialty] || selected.specialty}</p>
+                  <p className="text-sm text-muted-foreground">{specialtyLabelMap[selected.specialty] || selected.specialty}</p>
                   <p className="mt-2 text-sm">
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
                       {selected.credentialLabel}
@@ -377,6 +542,10 @@ export function ProfessionalsView({
             setOpen(false)
             return
           }
+          if (!val) {
+            setIsCreatingSpecialty(false)
+            setNewSpecialtyName("")
+          }
           setOpen(val)
         }}
       >
@@ -439,21 +608,82 @@ export function ProfessionalsView({
               />
             </Field>
             <Field label="Especialidade">
-              <Select
-                value={form.specialty}
-                onValueChange={(value) => setForm({ ...form, specialty: value as Specialty })}
-              >
-                <SelectTrigger className="h-10 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableSpecialties.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {SPECIALTY_LABEL[item] || item}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Select
+                  value={form.specialty}
+                  onValueChange={(value) => setForm({ ...form, specialty: value as Specialty })}
+                >
+                  <SelectTrigger className="h-10 w-full" data-testid="select-specialty">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSpecialties.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {isCreatingSpecialty ? (
+                  <div className="rounded-xl border border-border/80 bg-muted/40 p-3 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-foreground">
+                        Cadastrar nova especialidade
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                        disabled={savingSpecialty}
+                        onClick={() => {
+                          setIsCreatingSpecialty(false)
+                          setNewSpecialtyName("")
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        id="new-specialty-name"
+                        data-testid="input-new-specialty"
+                        placeholder="Ex: Endocrinologia, Neurologia..."
+                        className="h-9 text-xs"
+                        value={newSpecialtyName}
+                        disabled={savingSpecialty}
+                        onChange={(event) => setNewSpecialtyName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault()
+                            void handleCreateSpecialty()
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 text-xs shrink-0"
+                        data-testid="btn-save-specialty"
+                        disabled={savingSpecialty || !newSpecialtyName.trim()}
+                        onClick={() => void handleCreateSpecialty()}
+                      >
+                        {savingSpecialty ? "Salvando..." : "Salvar"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="btn-add-specialty-toggle"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline focus:outline-none"
+                    onClick={() => setIsCreatingSpecialty(true)}
+                  >
+                    <Plus className="size-3.5" /> Cadastrar nova especialidade
+                  </button>
+                )}
+              </div>
             </Field>
             <Field label="Registro profissional" htmlFor="pro-credential" error={errors.credentialCode}>
               <Input

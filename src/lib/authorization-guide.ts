@@ -1,5 +1,8 @@
 import { formatDate, formatMoney } from "@/lib/format"
 import type { AssociateBenefitSnapshot } from "@/lib/types"
+import { isPhotoUrl, portraitUri } from "@/components/shared/portrait"
+
+export { isPhotoUrl }
 
 export const GUIDE_LOGO_SRC = "/brand/cuidarsaude-logo.png"
 
@@ -36,6 +39,49 @@ export function guideCredentials(reference: string) {
   }
 }
 
+export function loadOptionalImage(url?: string | null): Promise<HTMLImageElement | null> {
+  if (!url || typeof url !== "string" || !url.trim()) {
+    return Promise.resolve(null)
+  }
+
+  return new Promise<HTMLImageElement | null>((resolve) => {
+    try {
+      const ImgConstructor =
+        typeof Image !== "undefined"
+          ? Image
+          : typeof window !== "undefined" && window.Image
+          ? window.Image
+          : (globalThis as unknown as { Image?: new () => HTMLImageElement }).Image
+
+      if (!ImgConstructor || typeof ImgConstructor !== "function") {
+        resolve(null)
+        return
+      }
+
+      const image = new ImgConstructor()
+      if (!url.startsWith("data:")) {
+        image.crossOrigin = "anonymous"
+      }
+
+      const timer = setTimeout(() => {
+        resolve(null)
+      }, 2000)
+
+      image.onload = () => {
+        clearTimeout(timer)
+        resolve((image.naturalWidth || image.width || 0) > 0 ? image : null)
+      }
+      image.onerror = () => {
+        clearTimeout(timer)
+        resolve(null)
+      }
+      image.src = url
+    } catch {
+      resolve(null)
+    }
+  })
+}
+
 export async function createAuthorizationGuide(input: AuthorizationGuideInput) {
   const canvas = document.createElement("canvas")
   const scale = 2
@@ -48,9 +94,9 @@ export async function createAuthorizationGuide(input: AuthorizationGuideInput) {
   context.fillStyle = "#ffffff"
   context.fillRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT)
 
-  const logo = await loadOptionalLogo(GUIDE_LOGO_SRC)
-  drawHeader(context, logo, input.clinic.name)
+  const logo = await loadOptionalImage(GUIDE_LOGO_SRC)
   const credentials = guideCredentials(input.reference)
+  drawHeader(context, logo, input.clinic.name, credentials.number, input.authorizedAt)
   drawCredentialBoxes(context, credentials.number, credentials.password)
 
   let y = 248
@@ -64,24 +110,55 @@ export async function createAuthorizationGuide(input: AuthorizationGuideInput) {
     y = drawSection(context, y, "Benefícios do associado", associateBenefitRows(input.associateBenefit))
     y += 18
   }
-  y = drawSection(context, y, "Dados do médico", [
-    ["Nome", input.professional.name],
-    ["Especialidade", input.professional.specialtyLabel],
-    ["Registro", `${input.professional.credentialLabel} ${input.professional.credentialCode}`],
-    ["Local", input.professional.location],
-    ["Atendimento", `${input.professional.startHour} às ${input.professional.endHour}`],
-  ])
+
+  const isGeneralClinic =
+    input.professional.name.trim().toLowerCase() === "geral da clínica" ||
+    input.professional.name.trim().toLowerCase() === "corpo clínico"
+
+  let photoToLoad: string | null = null
+  if (!isGeneralClinic) {
+    if (input.professional.photoUrl && isPhotoUrl(input.professional.photoUrl)) {
+      photoToLoad = input.professional.photoUrl
+    } else if (isPhotoUrl(input.professional.name)) {
+      photoToLoad = input.professional.name
+    } else {
+      photoToLoad = portraitUri(input.professional.name)
+    }
+  }
+
+  const doctorPhoto = photoToLoad ? await loadOptionalImage(photoToLoad) : null
+
+  y = drawDoctorSection(
+    context,
+    y,
+    "Dados do médico",
+    [
+      ["Nome", input.professional.name],
+      ["Especialidade", input.professional.specialtyLabel],
+      ["Registro", `${input.professional.credentialLabel} ${input.professional.credentialCode}`],
+      ["Local", input.professional.location],
+      ["Atendimento", `${input.professional.startHour} às ${input.professional.endHour}`],
+    ],
+    doctorPhoto,
+    isGeneralClinic,
+    input.professional.name,
+  )
   y += 18
+
   const city = splitCity(input.clinic.city)
+  const fullAddress = input.clinic.address + (city.municipio ? ` - ${city.municipio}${city.uf ? `/${city.uf}` : ""}` : "")
+  const formattedAppointment = formatDate(input.appointmentAt, "dd/MM/yyyy 'às' HH:mm")
+  const formattedPhone = formatPhone(input.clinic.phone)
+
   y = drawSection(context, y, "Local e data da realização", [
-    ["Nome", input.clinic.name],
-    ["Telefone", input.clinic.phone.replace(/\D/g, "")],
-    ["Data da agenda", formatDate(input.appointmentAt, "dd/MM/yyyy 'às' HH:mm")],
-    ["Endereço", input.clinic.address],
-    ["Município", city.municipio],
-    ["UF", city.uf],
+    ["Unidade de atendimento", input.clinic.name],
+    ["Telefone de contato", formattedPhone],
+    ["Data e horário agendado", formattedAppointment, true],
+    ["Endereço completo", fullAddress],
+    ["Município / UF", `${city.municipio} · ${city.uf}`],
   ])
   y += 18
+
   const procedures = input.procedures?.length
     ? input.procedures
     : [{
@@ -108,7 +185,7 @@ export function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-function associateBenefitRows(benefit: AssociateBenefitSnapshot) {
+function associateBenefitRows(benefit: AssociateBenefitSnapshot): Array<[string, string]> {
   const rows: Array<[string, string]> = [["Associado", benefit.name]]
   if (benefit.discountPercent > 0) {
     rows.push(["Desconto na consulta", `${benefit.discountPercent}% · de ${formatMoney(benefit.listPrice)} por ${formatMoney(benefit.amount)}`])
@@ -122,7 +199,13 @@ function associateBenefitRows(benefit: AssociateBenefitSnapshot) {
   return rows
 }
 
-function drawHeader(context: CanvasRenderingContext2D, logo: HTMLImageElement | null, clinicName: string) {
+function drawHeader(
+  context: CanvasRenderingContext2D,
+  logo: HTMLImageElement | null,
+  clinicName: string,
+  guideNumber?: string,
+  authorizedAt?: string,
+) {
   if (logo) {
     context.drawImage(logo, 48, 42, 56, 56)
   } else {
@@ -134,14 +217,90 @@ function drawHeader(context: CanvasRenderingContext2D, logo: HTMLImageElement | 
   context.fillStyle = "#5c6b73"
   context.font = "14px system-ui, sans-serif"
   context.fillText("Guia de autorização", 120, 88)
+
+  drawHeaderAuthStamp(context, 516, 42, 230, 56, guideNumber, authorizedAt)
+
   context.fillStyle = "#0d3b4c"
   context.font = "700 28px system-ui, sans-serif"
   context.fillText("GUIA DE AUTORIZAÇÃO", 48, 150)
 }
 
+function drawHeaderAuthStamp(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  guideNumber?: string,
+  authorizedAt?: string,
+) {
+  context.save()
+  context.fillStyle = "#f0fdf4"
+  context.beginPath()
+  if (typeof context.roundRect === "function") {
+    context.roundRect(x, y, width, height, 8)
+  } else {
+    context.rect(x, y, width, height)
+  }
+  context.fill()
+
+  context.strokeStyle = "#0d5f47"
+  context.lineWidth = 1.5
+  context.stroke()
+
+  context.strokeStyle = "#86efac"
+  context.lineWidth = 1
+  context.strokeRect(x + 3, y + 3, width - 6, height - 6)
+
+  context.textAlign = "center"
+  context.fillStyle = "#0d5f47"
+  context.font = "700 13px system-ui, sans-serif"
+  context.fillText("✓ GUIA AUTORIZADA", x + width / 2, y + 21)
+
+  context.fillStyle = "#047857"
+  context.font = "600 10px system-ui, sans-serif"
+  const dateStr = authorizedAt ? formatDate(authorizedAt, "dd/MM/yyyy HH:mm") : ""
+  const infoText = dateStr ? `AUTENTICADA · ${dateStr}` : "AUTENTICADA DIGITALMENTE"
+  context.fillText(infoText, x + width / 2, y + 36)
+
+  if (guideNumber) {
+    context.fillStyle = "#65a30d"
+    context.font = "500 9px system-ui, sans-serif"
+    context.fillText(`CÓD: ${guideNumber}`, x + width / 2, y + 49)
+  }
+  context.restore()
+}
+
 function drawCredentialBoxes(context: CanvasRenderingContext2D, number: string, password: string) {
-  drawBox(context, 48, 172, 330, 52, "GUIA", number)
-  drawBox(context, 394, 172, 352, 52, "SENHA", password)
+  drawBox(context, 48, 172, 222, 52, "Nº DA GUIA", number)
+  drawBox(context, 282, 172, 222, 52, "SENHA DE ATENDIMENTO", password)
+  drawAuthenticBadge(context, 516, 172, 230, 52)
+}
+
+function drawAuthenticBadge(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
+  context.save()
+  context.fillStyle = "#0d5f47"
+  context.beginPath()
+  if (typeof context.roundRect === "function") {
+    context.roundRect(x, y, width, height, 6)
+  } else {
+    context.rect(x, y, width, height)
+  }
+  context.fill()
+
+  context.strokeStyle = "#34d399"
+  context.lineWidth = 1
+  context.strokeRect(x + 3, y + 3, width - 6, height - 6)
+
+  context.textAlign = "center"
+  context.fillStyle = "#ffffff"
+  context.font = "700 13px system-ui, sans-serif"
+  context.fillText("✓ GUIA AUTORIZADA", x + width / 2, y + 22)
+
+  context.fillStyle = "#a7f3d0"
+  context.font = "600 10px system-ui, sans-serif"
+  context.fillText("AUTENTICADA NO SISTEMA", x + width / 2, y + 39)
+  context.restore()
 }
 
 function drawBox(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, label: string, value: string) {
@@ -156,12 +315,80 @@ function drawBox(context: CanvasRenderingContext2D, x: number, y: number, width:
   context.fillText(value, x + 14, y + 40)
 }
 
-function drawSection(context: CanvasRenderingContext2D, y: number, title: string, rows: Array<[string, string]>) {
+type SectionRowItem = [label: string, value: string, highlight?: boolean]
+
+function drawSection(context: CanvasRenderingContext2D, y: number, title: string, rows: SectionRowItem[]) {
   context.fillStyle = "#0d3b4c"
   context.fillRect(48, y, 698, 28)
   context.fillStyle = "#ffffff"
   context.font = "600 13px system-ui, sans-serif"
   context.fillText(title, 60, y + 19)
+
+  let cursor = y + 52
+  for (const [label, value, highlight] of rows) {
+    if (highlight) {
+      context.save()
+      context.fillStyle = "#f0fdf4"
+      context.strokeStyle = "#86efac"
+      context.lineWidth = 1.5
+      context.beginPath()
+      if (typeof context.roundRect === "function") {
+        context.roundRect(54, cursor - 16, 686, 28, 6)
+      } else {
+        context.rect(54, cursor - 16, 686, 28)
+      }
+      context.fill()
+      context.stroke()
+
+      context.fillStyle = "#0d5f47"
+      context.font = "700 13px system-ui, sans-serif"
+      context.fillText(label, 64, cursor + 3)
+
+      context.fillStyle = "#047857"
+      context.font = "700 15px system-ui, sans-serif"
+      context.fillText(value, 230, cursor + 3)
+      context.restore()
+      cursor += 36
+    } else {
+      context.fillStyle = "#5c6b73"
+      context.font = "13px system-ui, sans-serif"
+      context.fillText(label, 60, cursor)
+      context.fillStyle = "#102027"
+      context.font = "600 14px system-ui, sans-serif"
+      cursor = fillWrapped(context, value, 230, cursor, 500, 20)
+      cursor += 10
+    }
+  }
+  return cursor
+}
+
+function drawDoctorSection(
+  context: CanvasRenderingContext2D,
+  y: number,
+  title: string,
+  rows: Array<[string, string]>,
+  doctorPhoto: HTMLImageElement | null,
+  isGeneralClinic: boolean,
+  professionalName: string,
+) {
+  context.fillStyle = "#0d3b4c"
+  context.fillRect(48, y, 698, 28)
+  context.fillStyle = "#ffffff"
+  context.font = "600 13px system-ui, sans-serif"
+  context.fillText(title, 60, y + 19)
+
+  const photoCenterX = 672
+  const photoCenterY = y + 74
+  const photoRadius = 32
+
+  if (doctorPhoto) {
+    drawCircularPhoto(context, doctorPhoto, photoCenterX, photoCenterY, photoRadius)
+  } else if (isGeneralClinic) {
+    drawClinicSeal(context, photoCenterX, photoCenterY, photoRadius)
+  } else {
+    drawInitialsAvatar(context, photoCenterX, photoCenterY, photoRadius, professionalName)
+  }
+
   let cursor = y + 52
   for (const [label, value] of rows) {
     context.fillStyle = "#5c6b73"
@@ -169,10 +396,108 @@ function drawSection(context: CanvasRenderingContext2D, y: number, title: string
     context.fillText(label, 60, cursor)
     context.fillStyle = "#102027"
     context.font = "600 14px system-ui, sans-serif"
-    cursor = fillWrapped(context, value, 230, cursor, 500, 20)
+    cursor = fillWrapped(context, value, 230, cursor, 390, 20)
     cursor += 10
   }
-  return cursor
+
+  return Math.max(cursor, y + 128)
+}
+
+function drawCircularPhoto(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  centerX: number,
+  centerY: number,
+  radius: number,
+) {
+  context.save()
+  context.beginPath()
+  context.arc(centerX, centerY, radius, 0, Math.PI * 2)
+  context.closePath()
+  context.clip()
+
+  const size = radius * 2
+  context.drawImage(image, centerX - radius, centerY - radius, size, size)
+  context.restore()
+
+  context.save()
+  context.beginPath()
+  context.arc(centerX, centerY, radius, 0, Math.PI * 2)
+  context.strokeStyle = "#d0d7de"
+  context.lineWidth = 2
+  context.stroke()
+  context.restore()
+}
+
+function drawClinicSeal(
+  context: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  radius: number,
+) {
+  context.save()
+  context.beginPath()
+  context.arc(centerX, centerY, radius, 0, Math.PI * 2)
+  context.fillStyle = "#e6f4f1"
+  context.fill()
+  context.strokeStyle = "#0d5f47"
+  context.lineWidth = 2
+  context.stroke()
+
+  context.beginPath()
+  context.arc(centerX, centerY, radius - 4, 0, Math.PI * 2)
+  context.strokeStyle = "#a7f3d0"
+  context.lineWidth = 1
+  context.stroke()
+
+  context.strokeStyle = "#0d5f47"
+  context.lineWidth = 3.5
+  context.lineCap = "round"
+  const arm = radius * 0.42
+  context.beginPath()
+  context.moveTo(centerX, centerY - arm)
+  context.lineTo(centerX, centerY + arm)
+  context.moveTo(centerX - arm, centerY)
+  context.lineTo(centerX + arm, centerY)
+  context.stroke()
+
+  context.fillStyle = "#0d5f47"
+  context.font = "600 9px system-ui, sans-serif"
+  context.textAlign = "center"
+  context.fillText("CLÍNICA", centerX, centerY + radius + 13)
+  context.restore()
+}
+
+function drawInitialsAvatar(
+  context: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  name: string,
+) {
+  context.save()
+  context.beginPath()
+  context.arc(centerX, centerY, radius, 0, Math.PI * 2)
+  context.fillStyle = "#e6f4f1"
+  context.fill()
+  context.strokeStyle = "#0d5f47"
+  context.lineWidth = 2
+  context.stroke()
+
+  const initials = name
+    .replace(/^Dr\.\s*|^Dra\.\s*/i, "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() || "")
+    .join("") || "MD"
+
+  context.fillStyle = "#0d5f47"
+  context.font = "700 16px system-ui, sans-serif"
+  context.textAlign = "center"
+  context.textBaseline = "middle"
+  context.fillText(initials, centerX, centerY)
+  context.restore()
 }
 
 function drawProcedureTable(
@@ -258,7 +583,11 @@ function drawMark(context: CanvasRenderingContext2D, x: number, y: number, size:
   context.translate(x, y)
   context.fillStyle = "#0d3b4c"
   context.beginPath()
-  context.roundRect(0, 0, size, size, 12)
+  if (typeof context.roundRect === "function") {
+    context.roundRect(0, 0, size, size, 12)
+  } else {
+    context.rect(0, 0, size, size)
+  }
   context.fill()
   context.strokeStyle = "#7ed9d2"
   context.lineWidth = 3
@@ -305,20 +634,15 @@ function splitCity(city: string) {
   return { municipio: municipio?.trim() || city, uf: uf?.trim() || "" }
 }
 
-function loadOptionalLogo(src: string) {
-  return new Promise<HTMLImageElement | null>((resolve) => {
-    const image = new Image()
-    const timer = window.setTimeout(() => resolve(null), 1200)
-    image.onload = () => {
-      window.clearTimeout(timer)
-      resolve(image.width > 0 ? image : null)
-    }
-    image.onerror = () => {
-      window.clearTimeout(timer)
-      resolve(null)
-    }
-    image.src = src
-  })
+function formatPhone(phone: string) {
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+  }
+  return phone
 }
 
 export function printAuthorizationGuide(blob: Blob, title = "Guia de Autorização"): Promise<void> {
@@ -408,4 +732,3 @@ export function printAuthorizationGuide(blob: Blob, title = "Guia de Autorizaç�
     frameDoc.close()
   })
 }
-

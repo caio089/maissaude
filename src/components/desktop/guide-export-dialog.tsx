@@ -28,6 +28,7 @@ export type GuideDialogItem = {
   startsAt: string | null
   patient: { id: string; name: string; cpf: string; birthDate?: string } | null
   professional: string
+  photoUrl?: string | null
   service: string
   paymentStatus: string
   guideInput?: AuthorizationGuideInput
@@ -61,32 +62,42 @@ export function GuideExportDialog({ open, onOpenChange, guide }: GuideExportDial
     let createdUrl: string | null = null
     setGenerating(true)
 
-    const guideInput: AuthorizationGuideInput = guide.guideInput || {
-      reference: guide.id,
-      authorizedAt: guide.issuedAt,
-      patient: {
-        name: guide.patient?.name || "Paciente",
-        cpf: guide.patient?.cpf || "",
-        birthDate: guide.patient?.birthDate || "2000-01-01",
-      },
-      clinic: {
-        name: "CuidarSaude",
-        phone: "(85) 3000-0000",
-        address: "Rua Exemplo, 123",
-        city: "Fortaleza/CE",
-      },
-      appointmentAt: guide.startsAt || guide.issuedAt,
-      professional: {
-        name: guide.professional,
-        specialtyLabel: "Clínica geral",
-        credentialLabel: "CRM",
-        credentialCode: "0000",
-        location: "Clínica CuidarSaude",
-        startHour: "08:00",
-        endHour: "18:00",
-      },
-      serviceName: guide.service,
-    }
+    const baseGuideInput = guide.guideInput
+    const guideInput: AuthorizationGuideInput = baseGuideInput
+      ? {
+          ...baseGuideInput,
+          professional: {
+            ...baseGuideInput.professional,
+            photoUrl: baseGuideInput.professional.photoUrl ?? guide.photoUrl ?? null,
+          },
+        }
+      : {
+          reference: guide.id,
+          authorizedAt: guide.issuedAt,
+          patient: {
+            name: guide.patient?.name || "Paciente",
+            cpf: guide.patient?.cpf || "",
+            birthDate: guide.patient?.birthDate || "2000-01-01",
+          },
+          clinic: {
+            name: "CuidarSaude",
+            phone: "(85) 3000-0000",
+            address: "Rua Exemplo, 123",
+            city: "Fortaleza/CE",
+          },
+          appointmentAt: guide.startsAt || guide.issuedAt,
+          professional: {
+            name: guide.professional,
+            specialtyLabel: "Clínica geral",
+            credentialLabel: "CRM",
+            credentialCode: "0000",
+            location: "Clínica CuidarSaude",
+            startHour: "08:00",
+            endHour: "18:00",
+            photoUrl: guide.photoUrl ?? null,
+          },
+          serviceName: guide.service,
+        }
 
     createAuthorizationGuide(guideInput)
       .then((generatedBlob) => {
@@ -109,16 +120,27 @@ export function GuideExportDialog({ open, onOpenChange, guide }: GuideExportDial
   }, [open, guide])
 
   const handleDownload = () => {
-    if (!blob || !credentials) return
-    downloadBlob(blob, `guia-cuidarsaude-${credentials.number}.png`)
-    toast.success("Download da guia iniciado.")
+    if (!blob || !credentials) {
+      toast.error("Aguarde o carregamento da imagem da guia para baixar.")
+      return
+    }
+    try {
+      downloadBlob(blob, `guia-cuidarsaude-${credentials.number}.png`)
+      toast.success("Download da guia em PNG iniciado.")
+    } catch {
+      toast.error("Não foi possível iniciar o download da guia.")
+    }
   }
 
   const handlePrint = async () => {
-    if (!blob || !credentials) return
+    if (!blob || !credentials) {
+      toast.error("Aguarde o carregamento da imagem da guia para imprimir.")
+      return
+    }
     setPrinting(true)
     try {
       await printAuthorizationGuide(blob, `Guia ${credentials.number} - CuidarSaude`)
+      toast.success("Diálogo de impressão aberto.")
     } catch {
       toast.error("Não foi possível acionar a impressão.")
     } finally {

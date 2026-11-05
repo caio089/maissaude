@@ -16,18 +16,27 @@ export function portraitUri(seed: string) {
   return uri
 }
 
+export function isPhotoUrl(value?: string | null): boolean {
+  if (!value || typeof value !== "string") return false
+  return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:image/")
+}
+
 export function Portrait({
   seed,
+  photoUrl,
   name,
   className = "size-11",
 }: {
   seed: string
+  photoUrl?: string | null
   name: string
   className?: string
 }) {
+  const resolvedPhoto = photoUrl && isPhotoUrl(photoUrl) ? photoUrl : isPhotoUrl(seed) ? seed : null
+
   return (
     <img
-      src={portraitUri(seed)}
+      src={resolvedPhoto || portraitUri(seed)}
       alt={`Foto de ${name}`}
       className={`${className} rounded-full object-cover ring-1 ring-foreground/10`}
     />

@@ -27,6 +27,8 @@ import {
 } from "@/lib/types"
 import { hasErrors, MIN_PROFESSIONAL_PRICE, validateProfessionalInput } from "@/lib/validation"
 
+const MAX_PHOTO_BYTES = 1.5 * 1024 * 1024
+
 const blank = (): ProfessionalInput => ({
   name: "",
   specialty: "clinica-geral",
@@ -37,6 +39,7 @@ const blank = (): ProfessionalInput => ({
   startHour: "08:00",
   endHour: "18:00",
   active: true,
+  photoUrl: null,
 })
 
 export function canManageProfessionals(role?: ClinicRole | null): boolean {
@@ -92,6 +95,29 @@ export function ProfessionalsView({
 
   const canManage = canManageProfessionals(role)
   const viewMode = getProfessionalsViewMode(role)
+
+  const availableSpecialties = useMemo(() => {
+    const set = new Set<string>(SPECIALTIES)
+    if (form.specialty) set.add(form.specialty)
+    return Array.from(set)
+  }, [form.specialty])
+
+  function handlePhotoFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (file.size > MAX_PHOTO_BYTES) {
+      toast.error("A foto deve ter no máximo 1.5 MB.")
+      event.target.value = ""
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setForm((prev) => ({ ...prev, photoUrl: reader.result as string }))
+      }
+    }
+    reader.readAsDataURL(file)
+  }
 
   async function refresh() {
     const response = await fetch("/api/desktop/professionals", { cache: "no-store" })
@@ -154,6 +180,7 @@ export function ProfessionalsView({
       startHour: professional.startHour,
       endHour: professional.endHour,
       active: professional.active,
+      photoUrl: professional.photoUrl || null,
     })
     setServices(professional.services.map((service) => ({ ...service, kind: service.kind || "consulta" })))
     setErrors({})
@@ -245,10 +272,10 @@ export function ProfessionalsView({
                 onClick={() => setSelectedId(professional.id)}
                 className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left ${professional.id === selected?.id ? "bg-accent" : "hover:bg-muted"}`}
               >
-                <Portrait seed={professional.avatarSeed} name={professional.name} />
+                <Portrait seed={professional.avatarSeed} name={professional.name} photoUrl={professional.photoUrl} />
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">{professional.name}</span>
-                  <span className="block text-xs text-muted-foreground">{SPECIALTY_LABEL[professional.specialty]}</span>
+                  <span className="block text-xs text-muted-foreground">{SPECIALTY_LABEL[professional.specialty] || professional.specialty}</span>
                 </span>
               </button>
             ))
@@ -258,10 +285,10 @@ export function ProfessionalsView({
           <article className="panel p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex gap-4">
-                <Portrait seed={selected.avatarSeed} name={selected.name} className="size-20" />
+                <Portrait seed={selected.avatarSeed} name={selected.name} photoUrl={selected.photoUrl} className="size-20" />
                 <div>
                   <h2 className="text-2xl font-semibold">{selected.name}</h2>
-                  <p className="text-sm text-muted-foreground">{SPECIALTY_LABEL[selected.specialty]}</p>
+                  <p className="text-sm text-muted-foreground">{SPECIALTY_LABEL[selected.specialty] || selected.specialty}</p>
                   <p className="mt-2 text-sm">
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
                       {selected.credentialLabel}
@@ -358,6 +385,51 @@ export function ProfessionalsView({
             <DialogTitle>{editing ? "Editar profissional" : "Novo profissional"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
+            <Field label="Foto do profissional" hint="Envie uma foto (máx. 1.5 MB) ou informe a URL direta.">
+              <div className="flex items-center gap-4">
+                <Portrait
+                  seed={form.name.trim() || "profissional"}
+                  photoUrl={form.photoUrl}
+                  name={form.name || "Profissional"}
+                  className="size-16 shrink-0"
+                />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-input bg-background px-3 py-1.5 text-xs font-medium shadow-xs hover:bg-muted">
+                      <span>Escolher foto</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={handlePhotoFileChange}
+                      />
+                    </label>
+                    {form.photoUrl ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-destructive hover:bg-destructive/10"
+                        onClick={() => setForm((prev) => ({ ...prev, photoUrl: null }))}
+                      >
+                        Remover foto
+                      </Button>
+                    ) : null}
+                  </div>
+                  <Input
+                    placeholder="https://exemplo.com/foto.jpg"
+                    className="h-8 text-xs"
+                    value={form.photoUrl?.startsWith("data:") ? "" : (form.photoUrl ?? "")}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        photoUrl: event.target.value.trim() || null,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            </Field>
             <Field label="Nome" htmlFor="pro-name" error={errors.name}>
               <Input
                 id="pro-name"
@@ -375,9 +447,9 @@ export function ProfessionalsView({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SPECIALTIES.map((item) => (
+                  {availableSpecialties.map((item) => (
                     <SelectItem key={item} value={item}>
-                      {SPECIALTY_LABEL[item]}
+                      {SPECIALTY_LABEL[item] || item}
                     </SelectItem>
                   ))}
                 </SelectContent>

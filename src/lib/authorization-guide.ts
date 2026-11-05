@@ -635,8 +635,12 @@ function formatDay(value: string) {
 }
 
 function splitCity(city: string) {
-  const [municipio, uf] = city.split(" - ")
-  return { municipio: municipio?.trim() || city, uf: uf?.trim() || "" }
+  if (!city) return { municipio: "", uf: "" }
+  const parts = city.split(/\s*[-/·]\s*/)
+  if (parts.length >= 2) {
+    return { municipio: parts[0]?.trim() || city, uf: parts[1]?.trim() || "" }
+  }
+  return { municipio: city.trim(), uf: "" }
 }
 
 function formatPhone(phone: string) {

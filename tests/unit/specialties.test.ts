@@ -116,6 +116,26 @@ describe("POST /api/desktop/specialties", () => {
     expect(response.status).toBe(401)
   })
 
+  it("devolve 403 se o usuário for atendente", async () => {
+    vi.spyOn(clinicSession, "getClinicSession").mockResolvedValue({
+      authenticated: true,
+      role: "attendant",
+      email: "atendente@cuidarsaude.com",
+      name: "Atendente",
+    })
+
+    const request = new Request("http://localhost/api/desktop/specialties", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Endocrinologia" }),
+    })
+
+    const response = await POST(request)
+    expect(response.status).toBe(403)
+    const json = await response.json()
+    expect(json.error).toMatch(/somente leitura/i)
+  })
+
   it("devolve 400 se o nome for inválido ou muito curto", async () => {
     vi.spyOn(clinicSession, "getClinicSession").mockResolvedValue({
       authenticated: true,

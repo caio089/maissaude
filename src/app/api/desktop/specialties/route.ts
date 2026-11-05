@@ -32,6 +32,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
   }
 
+  if (session.role === "attendant") {
+    return NextResponse.json(
+      { error: "Atendentes possuem acesso somente leitura às especialidades." },
+      { status: 403 }
+    )
+  }
+
   const db = createSupabaseAdmin()
   if (!db) {
     return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
@@ -50,11 +57,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Nome de especialidade inválido." }, { status: 400 })
     }
 
+    const safeFilterName = normalizedName.replace(/"/g, "")
+
     // Verifica se já existe especialidade com este id ou nome
     const existing = await db
       .from("clinic_specialties")
       .select("id, name")
-      .or(`id.eq.${slugId},name.eq.${normalizedName}`)
+      .or(`id.eq.${slugId},name.eq."${safeFilterName}"`)
       .maybeSingle()
 
     if (existing?.data) {
@@ -72,7 +81,7 @@ export async function POST(request: Request) {
       const conflictExisting = await db
         .from("clinic_specialties")
         .select("id, name")
-        .or(`id.eq.${slugId},name.eq.${normalizedName}`)
+        .or(`id.eq.${slugId},name.eq."${safeFilterName}"`)
         .maybeSingle()
 
       if (conflictExisting?.data) {

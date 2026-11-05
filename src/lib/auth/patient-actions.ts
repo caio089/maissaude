@@ -157,6 +157,17 @@ export async function registerPatientAccount(input: {
   const admin = createSupabaseAdmin()
   if (!admin) return { ok: false, message: "Service role do Supabase ainda não foi configurada." }
 
+  const { data: existingAccount } = await admin
+    .from("mobile_accounts")
+    .select("auth_user_id")
+    .in("cpf", [parsed.cpf, formatCpf(parsed.cpf)])
+    .not("auth_user_id", "is", null)
+    .limit(1)
+    .maybeSingle()
+  if (existingAccount?.auth_user_id) {
+    return { ok: false, message: "Este CPF já tem conta. Entre com a senha ou recupere o acesso." }
+  }
+
   const existing = await findPatientEmailByCpf(parsed.cpf)
   if (existing) return { ok: false, message: "Este CPF já tem conta. Entre com a senha ou recupere o acesso." }
 

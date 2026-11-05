@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import {
+  Activity,
   Bell,
   CalendarDays,
   ClipboardList,
@@ -48,6 +49,7 @@ export const NAV = [
   { href: "/desktop/consultas", label: "Consultas", icon: ClipboardList },
   { href: "/desktop/guias", label: "Guias", icon: FileText },
   { href: "/desktop/atendimentos", label: "Consultas e procedimentos", icon: Stethoscope },
+  { href: "/desktop/cirurgias", label: "Cirurgias", icon: Activity },
   { href: "/desktop/pacientes", label: "Pacientes", icon: Users },
   { href: "/desktop/associados", label: "Associados", icon: IdCard },
   { href: "/desktop/financeiro", label: "Financeiro", icon: Wallet },

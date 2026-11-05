@@ -10,9 +10,9 @@ import { StatusBadge } from "@/components/shared/status-badge"
 import { Progress } from "@/components/ui/progress"
 import { formatDate, formatMoney, greeting, percent } from "@/lib/format"
 import { mapDbAppointment, mapDbPayment, mapDbPatient } from "@/lib/desktop-sync"
-import { buildNotifications, computeDashboard } from "@/lib/metrics"
+import { buildNotifications, computeDashboard, type OperationalAlert } from "@/lib/metrics"
 import { useDemoStore } from "@/lib/store"
-import type { Appointment, Associate, DashboardPeriod, Patient, Payment } from "@/lib/types"
+import type { Appointment, Associate, ClinicRole, DashboardPeriod, Patient, Payment } from "@/lib/types"
 
 const PERIODS: Array<{ id: DashboardPeriod; label: string }> = [
   { id: "7d", label: "7 dias" },
@@ -21,7 +21,35 @@ const PERIODS: Array<{ id: DashboardPeriod; label: string }> = [
   { id: "month", label: "Mês" },
 ]
 
-export function DashboardView() {
+export function shouldShowRevenueKpi(role?: ClinicRole | null): boolean {
+  return role !== "attendant"
+}
+
+export function getDashboardActiveChart(
+  requestedChart: "revenue" | "appointments",
+  role?: ClinicRole | null,
+): "revenue" | "appointments" {
+  if (role === "attendant") return "appointments"
+  return requestedChart
+}
+
+export function shouldShowRevenueToggle(role?: ClinicRole | null): boolean {
+  return role !== "attendant"
+}
+
+export function filterOperationalAlerts(alerts: OperationalAlert[], role?: ClinicRole | null): OperationalAlert[] {
+  if (role === "attendant") {
+    return alerts.filter((alert) => alert.href !== "/desktop/financeiro")
+  }
+  return alerts
+}
+
+export interface DashboardViewProps {
+  initialRole?: ClinicRole
+}
+
+export function DashboardView({ initialRole }: DashboardViewProps = {}) {
+  const [role, setRole] = useState<ClinicRole | null>(initialRole ?? null)
   const data = useDemoStore((state) => state.data)
   const associates = useDemoStore((state) => state.associates)
   const period = useDemoStore((state) => state.dashboardPeriod)
@@ -34,6 +62,16 @@ export function DashboardView() {
 
   useEffect(() => {
     let active = true
+
+    fetch("/api/desktop/session", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((sessionData) => {
+        if (active && sessionData?.authenticated) {
+          setRole(sessionData.role)
+        }
+      })
+      .catch(() => {})
+
     fetch("/api/desktop/consultations", { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) return
@@ -89,7 +127,10 @@ export function DashboardView() {
 
   const now = useMemo(() => new Date(), [])
   const metrics = computeDashboard(mergedData, period, now)
-  const alerts = buildNotifications(mergedData, now).slice(0, 3)
+  const alerts = useMemo(
+    () => filterOperationalAlerts(buildNotifications(mergedData, now), role).slice(0, 3),
+    [mergedData, now, role],
+  )
   const allAssociates = useMemo(() => {
     const map = new Map<string, Associate>()
     for (const item of associates) map.set(item.cpf.replace(/\D/g, ""), item)
@@ -101,6 +142,14 @@ export function DashboardView() {
   const today = mergedData.appointments
     .filter((item) => item.status !== "cancelled" && isSameDay(new Date(item.startsAt), now))
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
+
+  const showRevenueKpi = shouldShowRevenueKpi(role)
+  const activeChart = getDashboardActiveChart(chart, role)
+  const showRevenueToggle = shouldShowRevenueToggle(role)
+  const periodAppointmentsCount = useMemo(
+    () => metrics.series.reduce((sum, item) => sum + item.appointments, 0),
+    [metrics.series],
+  )
 
   return (
     <FadeIn className="space-y-6">
@@ -128,30 +177,39 @@ export function DashboardView() {
         </div>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-12">
-        <article className="relative overflow-hidden rounded-3xl bg-brand p-6 text-white lg:col-span-5">
-          <p className="text-sm text-white/75">Receita do período</p>
-          <p className="mt-3 text-4xl font-semibold tracking-tight">{formatMoney(metrics.revenue)}</p>
-          <p className="mt-2 text-sm text-white/75">
-            {metrics.revenueDelta >= 0 ? "Alta" : "Queda"} de {percent(Math.abs(metrics.revenueDelta))} em relação ao período anterior.
-          </p>
-          <dl className="mt-6 grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-2xl bg-white/8 px-3 py-2">
-              <dt className="text-white/60">Pendentes</dt>
-              <dd className="mt-1 font-medium">{formatMoney(metrics.pending)}</dd>
-            </div>
-            <div className="rounded-2xl bg-white/8 px-3 py-2">
-              <dt className="text-white/60">Associados ativos</dt>
-              <dd className="mt-1 font-medium">{activeAssociates}</dd>
-            </div>
-          </dl>
-        </article>
-        <div className="grid gap-4 sm:grid-cols-3 lg:col-span-7">
+      {showRevenueKpi ? (
+        <section className="grid gap-4 lg:grid-cols-12">
+          <article className="relative overflow-hidden rounded-3xl bg-brand p-6 text-white lg:col-span-5">
+            <p className="text-sm text-white/75">Receita do período</p>
+            <p className="mt-3 text-4xl font-semibold tracking-tight">{formatMoney(metrics.revenue)}</p>
+            <p className="mt-2 text-sm text-white/75">
+              {metrics.revenueDelta >= 0 ? "Alta" : "Queda"} de {percent(Math.abs(metrics.revenueDelta))} em relação ao período anterior.
+            </p>
+            <dl className="mt-6 grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-2xl bg-white/8 px-3 py-2">
+                <dt className="text-white/60">Pendentes</dt>
+                <dd className="mt-1 font-medium">{formatMoney(metrics.pending)}</dd>
+              </div>
+              <div className="rounded-2xl bg-white/8 px-3 py-2">
+                <dt className="text-white/60">Associados ativos</dt>
+                <dd className="mt-1 font-medium">{activeAssociates}</dd>
+              </div>
+            </dl>
+          </article>
+          <div className="grid gap-4 sm:grid-cols-3 lg:col-span-7">
+            <Metric icon={CalendarDays} label="Consultas de hoje" value={String(metrics.todayCount)} detail="Sem contar cancelamentos" href="/desktop/agenda" />
+            <Metric icon={Users} label="Pacientes atendidos" value={String(metrics.patientsSeen)} detail="Consultas realizadas no período" href="/desktop/pacientes" />
+            <Metric icon={Wallet} label="Ocupação" value={percent(metrics.occupancy)} detail={`${formatMoney(metrics.pending)} pendentes`} progress={metrics.occupancy * 100} href="/desktop/financeiro" />
+          </div>
+        </section>
+      ) : (
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Metric icon={CalendarDays} label="Consultas de hoje" value={String(metrics.todayCount)} detail="Sem contar cancelamentos" href="/desktop/agenda" />
+          <Metric icon={CalendarDays} label="Total de agendamentos" value={String(periodAppointmentsCount)} detail="No período selecionado" href="/desktop/consultas" />
           <Metric icon={Users} label="Pacientes atendidos" value={String(metrics.patientsSeen)} detail="Consultas realizadas no período" href="/desktop/pacientes" />
-          <Metric icon={Wallet} label="Ocupação" value={percent(metrics.occupancy)} detail={`${formatMoney(metrics.pending)} pendentes`} progress={metrics.occupancy * 100} href="/desktop/financeiro" />
-        </div>
-      </section>
+          <Metric icon={IdCard} label="Associados ativos" value={String(activeAssociates)} detail="Ativos no plano MaisSaúde" href="/desktop/associados" />
+        </section>
+      )}
 
       <section className="grid gap-4 xl:grid-cols-12">
         <div className="panel p-5 xl:col-span-8">
@@ -160,16 +218,26 @@ export function DashboardView() {
               <h2 className="text-lg font-semibold">Movimento da clínica</h2>
               <p className="text-sm text-muted-foreground">Os gráficos acompanham o período selecionado.</p>
             </div>
-            <div className="flex rounded-lg bg-muted p-1">
-              <button type="button" className={`rounded-md px-3 py-1 text-sm ${chart === "revenue" ? "bg-white shadow-sm" : ""}`} onClick={() => setChart("revenue")}>
-                Faturamento
-              </button>
-              <button type="button" className={`rounded-md px-3 py-1 text-sm ${chart === "appointments" ? "bg-white shadow-sm" : ""}`} onClick={() => setChart("appointments")}>
-                Consultas
-              </button>
-            </div>
+            {showRevenueToggle ? (
+              <div className="flex rounded-lg bg-muted p-1">
+                <button
+                  type="button"
+                  className={`rounded-md px-3 py-1 text-sm ${activeChart === "revenue" ? "bg-white shadow-sm" : ""}`}
+                  onClick={() => setChart("revenue")}
+                >
+                  Faturamento
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-md px-3 py-1 text-sm ${activeChart === "appointments" ? "bg-white shadow-sm" : ""}`}
+                  onClick={() => setChart("appointments")}
+                >
+                  Consultas
+                </button>
+              </div>
+            ) : null}
           </div>
-          {chart === "revenue" ? <RevenueArea data={metrics.series} /> : <AppointmentBars data={metrics.series} />}
+          {activeChart === "revenue" ? <RevenueArea data={metrics.series} /> : <AppointmentBars data={metrics.series} />}
         </div>
         <div className="panel p-5 xl:col-span-4">
           <div className="flex items-center justify-between">

@@ -16,7 +16,15 @@ import { Textarea } from "@/components/ui/textarea"
 import { ServiceFields } from "@/components/desktop/service-fields"
 import { formatMoney, WEEKDAY_SHORT } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
-import { SPECIALTIES, SPECIALTY_LABEL, type Professional, type ProfessionalInput, type Service, type Specialty } from "@/lib/types"
+import {
+  SPECIALTIES,
+  SPECIALTY_LABEL,
+  type ClinicRole,
+  type Professional,
+  type ProfessionalInput,
+  type Service,
+  type Specialty,
+} from "@/lib/types"
 import { hasErrors, MIN_PROFESSIONAL_PRICE, validateProfessionalInput } from "@/lib/validation"
 
 const blank = (): ProfessionalInput => ({
@@ -31,10 +39,39 @@ const blank = (): ProfessionalInput => ({
   active: true,
 })
 
-export function ProfessionalsView() {
+export function canManageProfessionals(role?: ClinicRole | null): boolean {
+  return role !== "attendant"
+}
+
+export function getProfessionalsViewMode(role?: ClinicRole | null): {
+  isReadOnly: boolean
+  badgeLabel: string | null
+} {
+  if (role === "attendant") {
+    return {
+      isReadOnly: true,
+      badgeLabel: "Modo somente leitura",
+    }
+  }
+  return {
+    isReadOnly: false,
+    badgeLabel: null,
+  }
+}
+
+export interface ProfessionalsViewProps {
+  initialRole?: ClinicRole
+  initialProfessionals?: Professional[]
+}
+
+export function ProfessionalsView({
+  initialRole,
+  initialProfessionals,
+}: ProfessionalsViewProps = {}) {
   const router = useRouter()
+  const [role, setRole] = useState<ClinicRole | null>(initialRole ?? null)
   const localProfessionals = useDemoStore((state) => state.data.professionals)
-  const [serverProfessionals, setServerProfessionals] = useState<Professional[]>([])
+  const [serverProfessionals, setServerProfessionals] = useState<Professional[]>(initialProfessionals ?? [])
   const [loadError, setLoadError] = useState("")
   const [saving, setSaving] = useState(false)
   const professionals = useMemo(() => {
@@ -53,27 +90,48 @@ export function ProfessionalsView() {
   const [errors, setErrors] = useState<ReturnType<typeof validateProfessionalInput>>({})
   const selected = professionals.find((item) => item.id === selectedId) ?? professionals[0]
 
+  const canManage = canManageProfessionals(role)
+  const viewMode = getProfessionalsViewMode(role)
+
   async function refresh() {
     const response = await fetch("/api/desktop/professionals", { cache: "no-store" })
-    const result = await response.json() as { professionals?: Professional[]; error?: string }
+    const result = (await response.json()) as { professionals?: Professional[]; error?: string }
     if (!response.ok) throw new Error(result.error || "Não foi possível carregar os profissionais.")
     setServerProfessionals(result.professionals || [])
     setLoadError("")
   }
 
   useEffect(() => {
+    let active = true
+
+    fetch("/api/desktop/session", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((sessionData) => {
+        if (active && sessionData?.authenticated) {
+          setRole(sessionData.role)
+        }
+      })
+      .catch(() => {})
+
     const controller = new AbortController()
     fetch("/api/desktop/professionals", { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
-        const result = await response.json() as { professionals?: Professional[]; error?: string }
+        const result = (await response.json()) as { professionals?: Professional[]; error?: string }
         if (!response.ok) throw new Error(result.error || "Não foi possível carregar os profissionais.")
         if (!controller.signal.aborted) setServerProfessionals(result.professionals || [])
       })
-      .catch((error: unknown) => { if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : "Não foi possível carregar os profissionais.") })
-    return () => controller.abort()
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted)
+          setLoadError(error instanceof Error ? error.message : "Não foi possível carregar os profissionais.")
+      })
+    return () => {
+      active = false
+      controller.abort()
+    }
   }, [])
 
   function openCreate() {
+    if (!canManage) return
     setEditing(null)
     setDraftId(`pro-${crypto.randomUUID()}`)
     setForm(blank())
@@ -83,6 +141,7 @@ export function ProfessionalsView() {
   }
 
   function openEdit(professional: Professional) {
+    if (!canManage) return
     setEditing(professional)
     setDraftId(professional.id)
     setForm({
@@ -102,49 +161,98 @@ export function ProfessionalsView() {
   }
 
   async function save() {
+    if (!canManage) {
+      toast.error("Ação restrita à administração da clínica.")
+      return
+    }
     const nextErrors = validateProfessionalInput(form)
     setErrors(nextErrors)
     if (hasErrors(nextErrors)) return
-    if (services.some((service) => !service.name.trim() || service.price < MIN_PROFESSIONAL_PRICE || !Number.isInteger(service.durationMin) || service.durationMin <= 0)) {
+    if (
+      services.some(
+        (service) =>
+          !service.name.trim() ||
+          service.price < MIN_PROFESSIONAL_PRICE ||
+          !Number.isInteger(service.durationMin) ||
+          service.durationMin <= 0,
+      )
+    ) {
       toast.error("Cada atendimento precisa custar pelo menos R$ 10 para gerar Pix.")
       return
     }
     setSaving(true)
     try {
-      const response = await fetch("/api/desktop/professionals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: draftId, form, services }) })
-      const result = await response.json() as { id?: string; error?: string }
+      const response = await fetch("/api/desktop/professionals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: draftId, form, services }),
+      })
+      const result = (await response.json()) as { id?: string; error?: string }
       if (!response.ok || !result.id) throw new Error(result.error || "Não foi possível salvar o profissional.")
       setSelectedId(result.id)
       setOpen(false)
-      try { await refresh() } catch { toast.warning("Profissional salvo. Atualize a página para conferir os dados.") }
+      try {
+        await refresh()
+      } catch {
+        toast.warning("Profissional salvo. Atualize a página para conferir os dados.")
+      }
       toast.success("Profissional e atendimentos salvos no banco.")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível salvar o profissional.")
-    } finally { setSaving(false) }
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
     <FadeIn className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="section-kicker">Clínica</p>
+          <div className="flex items-center gap-2">
+            <p className="section-kicker">Clínica</p>
+            {viewMode.isReadOnly && (
+              <span
+                data-testid="badge-readonly"
+                className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground ring-1 ring-border"
+              >
+                {viewMode.badgeLabel}
+              </span>
+            )}
+          </div>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Equipe</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Cadastre os profissionais que atendem na sua unidade.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {viewMode.isReadOnly
+              ? "Consulte os profissionais cadastrados e seus horários de atendimento."
+              : "Cadastre os profissionais que atendem na sua unidade."}
+          </p>
         </div>
-        <Button type="button" onClick={openCreate}><Plus /> Novo profissional</Button>
+        {canManage && (
+          <Button type="button" onClick={openCreate} data-testid="btn-new-professional">
+            <Plus /> Novo profissional
+          </Button>
+        )}
       </div>
       {loadError ? <p role="alert" className="text-sm text-destructive">{loadError}</p> : null}
       <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <div className="panel max-h-[72dvh] overflow-y-auto p-2">
-          {professionals.length === 0 ? <p className="px-3 py-4 text-sm text-muted-foreground">Nenhum profissional cadastrado.</p> : professionals.map((professional) => (
-            <button key={professional.id} type="button" onClick={() => setSelectedId(professional.id)} className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left ${professional.id === selected?.id ? "bg-accent" : "hover:bg-muted"}`}>
-              <Portrait seed={professional.avatarSeed} name={professional.name} />
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium">{professional.name}</span>
-                <span className="block text-xs text-muted-foreground">{SPECIALTY_LABEL[professional.specialty]}</span>
-              </span>
-            </button>
-          ))}
+          {professionals.length === 0 ? (
+            <p className="px-3 py-4 text-sm text-muted-foreground">Nenhum profissional cadastrado.</p>
+          ) : (
+            professionals.map((professional) => (
+              <button
+                key={professional.id}
+                type="button"
+                onClick={() => setSelectedId(professional.id)}
+                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left ${professional.id === selected?.id ? "bg-accent" : "hover:bg-muted"}`}
+              >
+                <Portrait seed={professional.avatarSeed} name={professional.name} />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium">{professional.name}</span>
+                  <span className="block text-xs text-muted-foreground">{SPECIALTY_LABEL[professional.specialty]}</span>
+                </span>
+              </button>
+            ))
+          )}
         </div>
         {selected ? (
           <article className="panel p-6">
@@ -155,7 +263,9 @@ export function ProfessionalsView() {
                   <h2 className="text-2xl font-semibold">{selected.name}</h2>
                   <p className="text-sm text-muted-foreground">{SPECIALTY_LABEL[selected.specialty]}</p>
                   <p className="mt-2 text-sm">
-                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200">{selected.credentialLabel}</span>
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
+                      {selected.credentialLabel}
+                    </span>
                     <span className="ml-2 font-medium">{selected.credentialCode}</span>
                   </p>
                 </div>
@@ -168,15 +278,27 @@ export function ProfessionalsView() {
             <p className="mt-5 max-w-2xl text-sm leading-6 text-muted-foreground">{selected.bio}</p>
             <div className="mt-5 flex flex-wrap gap-2">
               {(selected.workDays ?? []).map((day) => (
-                <span key={day} className="rounded-full bg-muted px-3 py-1 text-xs">{WEEKDAY_SHORT[day]}</span>
+                <span key={day} className="rounded-full bg-muted px-3 py-1 text-xs">
+                  {WEEKDAY_SHORT[day]}
+                </span>
               ))}
-              <span className="rounded-full bg-muted px-3 py-1 text-xs">{selected.startHour}–{selected.endHour}</span>
+              <span className="rounded-full bg-muted px-3 py-1 text-xs">
+                {selected.startHour}–{selected.endHour}
+              </span>
             </div>
             <div className="mt-6 grid gap-3 md:grid-cols-2">
               {(selected.services ?? []).map((service) => (
                 <div key={service.id} className="rounded-2xl bg-muted/70 p-4">
                   <p className="text-sm font-medium">{service.name}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{service.kind === "cirurgia" ? "Cirurgia" : service.kind === "exame" ? "Procedimento ou exame" : "Consulta"} · {service.durationMin} min · {service.modality === "teleconsulta" ? "teleconsulta" : "presencial"}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {service.kind === "cirurgia"
+                      ? "Cirurgia"
+                      : service.kind === "exame"
+                        ? "Procedimento ou exame"
+                        : "Consulta"}{" "}
+                    · {service.durationMin} min ·{" "}
+                    {service.modality === "teleconsulta" ? "teleconsulta" : "presencial"}
+                  </p>
                   <p className="mt-2 font-medium">{formatMoney(service.price)}</p>
                 </div>
               ))}
@@ -184,7 +306,12 @@ export function ProfessionalsView() {
             <div className="mt-6">
               <div className="flex items-center gap-2">
                 <Star className="size-4 fill-amber-400 text-amber-400" />
-                <p className="font-medium">{(selected.rating ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p>
+                <p className="font-medium">
+                  {(selected.rating ?? 0).toLocaleString("pt-BR", {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })}
+                </p>
                 <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">Avaliações</span>
               </div>
               <ul className="mt-3 space-y-2">
@@ -197,7 +324,11 @@ export function ProfessionalsView() {
               </ul>
             </div>
             <div className="mt-6 flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={() => openEdit(selected)}>Editar dados</Button>
+              {canManage && (
+                <Button type="button" variant="outline" onClick={() => openEdit(selected)}>
+                  Editar dados
+                </Button>
+              )}
               <Button
                 type="button"
                 onClick={() => {
@@ -212,26 +343,70 @@ export function ProfessionalsView() {
           </article>
         ) : null}
       </div>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open && canManage}
+        onOpenChange={(val) => {
+          if (!canManage) {
+            setOpen(false)
+            return
+          }
+          setOpen(val)
+        }}
+      >
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader><DialogTitle>{editing ? "Editar profissional" : "Novo profissional"}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{editing ? "Editar profissional" : "Novo profissional"}</DialogTitle>
+          </DialogHeader>
           <div className="grid gap-3">
             <Field label="Nome" htmlFor="pro-name" error={errors.name}>
-              <Input id="pro-name" className="h-10" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+              <Input
+                id="pro-name"
+                className="h-10"
+                value={form.name}
+                onChange={(event) => setForm({ ...form, name: event.target.value })}
+              />
             </Field>
             <Field label="Especialidade">
-              <Select value={form.specialty} onValueChange={(value) => setForm({ ...form, specialty: value as Specialty })}>
-                <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
+              <Select
+                value={form.specialty}
+                onValueChange={(value) => setForm({ ...form, specialty: value as Specialty })}
+              >
+                <SelectTrigger className="h-10 w-full">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  {SPECIALTIES.map((item) => <SelectItem key={item} value={item}>{SPECIALTY_LABEL[item]}</SelectItem>)}
+                  {SPECIALTIES.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {SPECIALTY_LABEL[item]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Field>
             <Field label="Registro profissional" htmlFor="pro-credential" error={errors.credentialCode}>
-              <Input id="pro-credential" className="h-10" value={form.credentialCode} onChange={(event) => setForm({ ...form, credentialCode: event.target.value })} />
+              <Input
+                id="pro-credential"
+                className="h-10"
+                value={form.credentialCode}
+                onChange={(event) => setForm({ ...form, credentialCode: event.target.value })}
+              />
             </Field>
-            <Field label="Valor da consulta" htmlFor="pro-price" error={errors.price} hint="Para testar Pix na Asaas, use a partir de R$ 10.">
-              <Input id="pro-price" type="number" min={MIN_PROFESSIONAL_PRICE} max="2000" step="0.01" className="h-10" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} />
+            <Field
+              label="Valor da consulta"
+              htmlFor="pro-price"
+              error={errors.price}
+              hint="Para testar Pix na Asaas, use a partir de R$ 10."
+            >
+              <Input
+                id="pro-price"
+                type="number"
+                min={MIN_PROFESSIONAL_PRICE}
+                max="2000"
+                step="0.01"
+                className="h-10"
+                value={form.price}
+                onChange={(event) => setForm({ ...form, price: Number(event.target.value) })}
+              />
             </Field>
             <Field label="Dias de atendimento" error={errors.workDays}>
               <div className="flex flex-wrap gap-3">
@@ -242,7 +417,10 @@ export function ProfessionalsView() {
                       onCheckedChange={(checked) => {
                         setForm((current) => ({
                           ...current,
-                          workDays: checked === true ? [...current.workDays, index].sort() : current.workDays.filter((day) => day !== index),
+                          workDays:
+                            checked === true
+                              ? [...current.workDays, index].sort()
+                              : current.workDays.filter((day) => day !== index),
                         }))
                       }}
                     />
@@ -253,10 +431,22 @@ export function ProfessionalsView() {
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Início" htmlFor="pro-start">
-                <Input id="pro-start" type="time" className="h-10" value={form.startHour} onChange={(event) => setForm({ ...form, startHour: event.target.value })} />
+                <Input
+                  id="pro-start"
+                  type="time"
+                  className="h-10"
+                  value={form.startHour}
+                  onChange={(event) => setForm({ ...form, startHour: event.target.value })}
+                />
               </Field>
               <Field label="Fim" htmlFor="pro-end">
-                <Input id="pro-end" type="time" className="h-10" value={form.endHour} onChange={(event) => setForm({ ...form, endHour: event.target.value })} />
+                <Input
+                  id="pro-end"
+                  type="time"
+                  className="h-10"
+                  value={form.endHour}
+                  onChange={(event) => setForm({ ...form, endHour: event.target.value })}
+                />
               </Field>
             </div>
             <Field label="Descrição" htmlFor="pro-bio" error={errors.bio}>
@@ -265,7 +455,9 @@ export function ProfessionalsView() {
             <ServiceFields services={services} onChange={setServices} savedIds={editing?.services.map((service) => service.id)} />
           </div>
           <DialogFooter>
-            <Button type="button" disabled={saving} onClick={() => void save()}>{saving ? "Salvando..." : "Salvar"}</Button>
+            <Button type="button" disabled={saving} onClick={() => void save()}>
+              {saving ? "Salvando..." : "Salvar"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

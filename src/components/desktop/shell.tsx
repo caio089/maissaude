@@ -38,6 +38,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { clinicGate, logoutClinic } from "@/lib/clinic-actions"
+import type { ClinicSessionInfo } from "@/lib/clinic-session"
 import { buildNotifications } from "@/lib/metrics"
 import { useDemoStore } from "@/lib/store"
 
@@ -58,6 +59,12 @@ export interface DesktopSession {
   role: "admin" | "attendant"
   email: string
   name: string
+  userId?: string
+}
+
+export interface DesktopShellProps {
+  children: React.ReactNode
+  initialSession?: DesktopSession | ClinicSessionInfo | null
 }
 
 export function getVisibleNav(role?: "admin" | "attendant" | null) {
@@ -72,10 +79,12 @@ function isActive(pathname: string, href: string) {
   return pathname.startsWith(href)
 }
 
-export function DesktopShell({ children }: { children: React.ReactNode }) {
+export function DesktopShell({ children, initialSession }: DesktopShellProps) {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
-  const [session, setSession] = useState<DesktopSession | null>(null)
+  const [session, setSession] = useState<DesktopSession | null>(
+    initialSession ? (initialSession as DesktopSession) : null
+  )
 
   useEffect(() => {
     void clinicGate()

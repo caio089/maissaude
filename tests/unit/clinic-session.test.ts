@@ -27,6 +27,11 @@ vi.mock("@/lib/clinic-token", () => ({
   verifyClinicToken: vi.fn(),
 }))
 
+const mockCreateSupabaseAdmin = vi.fn().mockReturnValue(null)
+vi.mock("@/lib/supabase/admin", () => ({
+  createSupabaseAdmin: () => mockCreateSupabaseAdmin(),
+}))
+
 import { resolveClinicRole, getClinicSession, hasClinicSession } from "@/lib/clinic-session"
 import { verifyClinicToken } from "@/lib/clinic-token"
 import { GET } from "@/app/api/desktop/session/route"
@@ -58,6 +63,7 @@ describe("resolveClinicRole", () => {
 describe("getClinicSession", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockCreateSupabaseAdmin.mockReturnValue(null)
   })
 
   it("retorna sessão de admin via Supabase claims", async () => {
@@ -107,6 +113,41 @@ describe("getClinicSession", () => {
       email: "atendente@clinica.com",
       name: "Maria Atendente",
       userId: "user-att-456",
+    })
+  })
+
+  it("trata como não autenticado se o usuário for encontrado em clinic_team com status inactive", async () => {
+    mockGetClaims.mockResolvedValue({
+      data: {
+        claims: {
+          sub: "user-inactive-123",
+          email: "inativa@clinica.com",
+          app_metadata: {
+            role: "clinic",
+            clinic_role: "attendant",
+          },
+        },
+      },
+    })
+
+    const maybeSingleMock = vi.fn().mockResolvedValue({
+      data: { status: "inactive" },
+      error: null,
+    })
+    const orMock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock })
+    const selectMock = vi.fn().mockReturnValue({ or: orMock })
+    const fromMock = vi.fn().mockReturnValue({ select: selectMock })
+
+    mockCreateSupabaseAdmin.mockReturnValue({
+      from: fromMock,
+    })
+
+    const session = await getClinicSession()
+    expect(session).toEqual({
+      authenticated: false,
+      role: "attendant",
+      email: "",
+      name: "",
     })
   })
 
@@ -179,6 +220,7 @@ describe("hasClinicSession", () => {
 describe("GET /api/desktop/session", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockCreateSupabaseAdmin.mockReturnValue(null)
   })
 
   it("retorna 401 se clínica não estiver autenticada", async () => {

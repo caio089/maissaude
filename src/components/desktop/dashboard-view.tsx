@@ -22,7 +22,7 @@ const PERIODS: Array<{ id: DashboardPeriod; label: string }> = [
 ]
 
 export function shouldShowRevenueKpi(role?: ClinicRole | null): boolean {
-  return role !== "attendant"
+  return role === "admin"
 }
 
 export function getDashboardActiveChart(

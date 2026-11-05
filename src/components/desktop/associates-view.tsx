@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatDate, formatMoney } from "@/lib/format"
 import { cpfDigits, formatCpf } from "@/lib/cpf"
 import { useDemoStore } from "@/lib/store"
-import type { Associate, AssociateInput, AssociateStatus, Patient } from "@/lib/types"
+import type { Associate, AssociateInput, AssociateStatus, ClinicRole, Patient } from "@/lib/types"
 import { hasErrors, validateAssociateInput, type FieldErrors } from "@/lib/validation"
 
 type BillingType = "PIX" | "BOLETO" | "CREDIT_CARD"
@@ -31,7 +31,13 @@ type PaymentResult = {
   identificationField?: string | null
 }
 
-export function AssociatesView() {
+export interface AssociatesViewProps {
+  initialRole?: ClinicRole
+  role?: ClinicRole
+}
+
+export function AssociatesView({ initialRole, role: propRole }: AssociatesViewProps = {}) {
+  const [role, setRole] = useState<ClinicRole | null>(propRole ?? initialRole ?? null)
   const associates = useDemoStore((state) => state.associates)
   const localPatients = useDemoStore((state) => state.data.patients)
   const rules = useDemoStore((state) => state.associateRules)
@@ -93,6 +99,20 @@ export function AssociatesView() {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    if (propRole || initialRole) return
+    let active = true
+    fetch("/api/desktop/session", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.authenticated) setRole(data.role)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [propRole, initialRole])
 
   const allAssociates = useMemo(() => {
     const map = new Map<string, Associate>()
@@ -435,7 +455,7 @@ export function AssociatesView() {
         <Button type="button" onClick={openCreate}><Plus /> Novo associado</Button>
       </div>
 
-      <AssociateRulesCard />
+      <AssociateRulesCard role={role ?? undefined} />
 
       <div className="panel p-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

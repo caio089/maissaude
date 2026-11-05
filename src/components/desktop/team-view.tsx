@@ -59,7 +59,14 @@ const initialForm: NewMemberForm = {
   password: "",
 }
 
-export function TeamView() {
+export interface TeamViewProps {
+  initialSession?: { email?: string; role?: ClinicRole } | null
+}
+
+export function TeamView({ initialSession }: TeamViewProps = {}) {
+  const [session, setSession] = useState<{ email?: string; role?: ClinicRole } | null>(
+    initialSession ?? null
+  )
   const [members, setMembers] = useState<ClinicTeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
@@ -95,6 +102,20 @@ export function TeamView() {
   useEffect(() => {
     void loadTeam()
   }, [])
+
+  useEffect(() => {
+    if (initialSession) return
+    let active = true
+    fetch("/api/desktop/session", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.authenticated) setSession(data)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [initialSession])
 
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -155,6 +176,14 @@ export function TeamView() {
 
   async function handleToggleStatus(member: ClinicTeamMember) {
     const nextStatus = member.status === "active" ? "inactive" : "active"
+    if (
+      nextStatus === "inactive" &&
+      session?.email &&
+      member.email.toLowerCase() === session.email.toLowerCase()
+    ) {
+      toast.error("Você não pode desativar seu próprio acesso de administrador.")
+      return
+    }
     setTogglingId(member.id)
     try {
       const res = await fetch("/api/desktop/team", {

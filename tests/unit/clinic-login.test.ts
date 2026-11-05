@@ -45,8 +45,11 @@ vi.mock("@/lib/supabase/env", () => ({
   isSupabaseBrowserConfigured: () => mockIsSupabaseBrowserConfigured(),
 }))
 
+const mockCreateSupabaseAdmin = vi.fn().mockReturnValue(null)
+
 vi.mock("@/lib/supabase/admin", () => ({
   isSupabaseAdminConfigured: () => mockIsSupabaseAdminConfigured(),
+  createSupabaseAdmin: () => mockCreateSupabaseAdmin(),
 }))
 
 const mockEnsureClinicAuthUser = vi.fn()
@@ -233,5 +236,35 @@ describe("loginClinic", () => {
 
     const res = await loginClinic({}, createFormData("atendente@clinica.com", "senhaInvalida"))
     expect(res).toEqual({ error: "E-mail ou senha da clínica não conferem." })
+  })
+
+  it("rejeita login de membro de equipe inativo, executa signOut e exibe mensagem de desativação", async () => {
+    mockSignInWithPassword.mockResolvedValue({ error: null })
+    mockGetClaims.mockResolvedValue({
+      data: {
+        claims: {
+          sub: "user-inactive-attendant",
+          email: "inativa@clinica.com",
+          app_metadata: { role: "clinic", clinic_role: "attendant" },
+        },
+      },
+    })
+
+    const maybeSingleMock = vi.fn().mockResolvedValue({
+      data: { status: "inactive" },
+      error: null,
+    })
+    const orMock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock })
+    const selectMock = vi.fn().mockReturnValue({ or: orMock })
+    const fromMock = vi.fn().mockReturnValue({ select: selectMock })
+
+    mockCreateSupabaseAdmin.mockReturnValue({
+      from: fromMock,
+    })
+
+    const res = await loginClinic({}, createFormData("inativa@clinica.com", "senha123"))
+    expect(res).toEqual({ error: "Este acesso foi desativado pela administração da clínica." })
+    expect(mockSignOut).toHaveBeenCalled()
+    expect(mockRedirect).not.toHaveBeenCalled()
   })
 })

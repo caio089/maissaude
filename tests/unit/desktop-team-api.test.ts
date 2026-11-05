@@ -368,6 +368,51 @@ describe("POST /api/desktop/team", () => {
     const json = await response.json()
     expect(json.error).toContain("already been registered")
   })
+
+  it("faz rollback e remove usuário do Auth se inserção em clinic_team falhar", async () => {
+    vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+      authenticated: true,
+      role: "admin",
+      email: "admin@exemplo.com",
+      name: "Admin",
+    })
+
+    const createUserMock = vi.fn().mockResolvedValue({
+      data: { user: { id: "auth-orphan-123" } },
+      error: null,
+    })
+    const deleteUserMock = vi.fn().mockResolvedValue({ data: {}, error: null })
+
+    const insertMock = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: null,
+          error: { message: "Database insert error" },
+        }),
+      }),
+    })
+    const fromMock = vi.fn().mockReturnValue({ insert: insertMock })
+
+    vi.spyOn(supabaseAdminModule, "createSupabaseAdmin").mockReturnValue({
+      auth: { admin: { createUser: createUserMock, deleteUser: deleteUserMock } },
+      from: fromMock,
+    } as any)
+
+    const request = new Request("http://localhost/api/desktop/team", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Beatriz Santos",
+        email: "beatriz@exemplo.com",
+        password: "segura123",
+        role: "attendant",
+      }),
+    })
+
+    const response = await POST(request)
+    expect(response.status).toBe(500)
+    expect(deleteUserMock).toHaveBeenCalledWith("auth-orphan-123")
+  })
 })
 
 describe("PATCH /api/desktop/team", () => {
@@ -498,5 +543,122 @@ describe("PATCH /api/desktop/team", () => {
     const json = await response.json()
     expect(json.ok).toBe(true)
     expect(json.member.status).toBe("inactive")
+  })
+
+  it("atualiza ban_duration no Auth para 876000h ao inativar membro da equipe", async () => {
+    vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+      authenticated: true,
+      role: "admin",
+      email: "admin@exemplo.com",
+      name: "Admin",
+    })
+
+    const updateUserByIdMock = vi.fn().mockResolvedValue({ data: {}, error: null })
+    const singleMock = vi.fn().mockResolvedValue({
+      data: {
+        id: "team-1",
+        auth_user_id: "auth-user-target",
+        name: "Ana Souza",
+        email: "ana@exemplo.com",
+        role: "attendant",
+        status: "inactive",
+        created_at: "2026-11-04T12:00:00Z",
+      },
+      error: null,
+    })
+    const selectMock = vi.fn().mockReturnValue({ single: singleMock })
+    const eqMock = vi.fn().mockReturnValue({ select: selectMock })
+    const updateMock = vi.fn().mockReturnValue({ eq: eqMock })
+    const fromMock = vi.fn().mockReturnValue({ update: updateMock })
+
+    vi.spyOn(supabaseAdminModule, "createSupabaseAdmin").mockReturnValue({
+      auth: { admin: { updateUserById: updateUserByIdMock } },
+      from: fromMock,
+    } as any)
+
+    const request = new Request("http://localhost/api/desktop/team", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "team-1", status: "inactive" }),
+    })
+
+    const response = await PATCH(request)
+    expect(response.status).toBe(200)
+    expect(updateUserByIdMock).toHaveBeenCalledWith("auth-user-target", { ban_duration: "876000h" })
+  })
+
+  it("atualiza ban_duration no Auth para none ao reativar membro da equipe", async () => {
+    vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+      authenticated: true,
+      role: "admin",
+      email: "admin@exemplo.com",
+      name: "Admin",
+    })
+
+    const updateUserByIdMock = vi.fn().mockResolvedValue({ data: {}, error: null })
+    const singleMock = vi.fn().mockResolvedValue({
+      data: {
+        id: "team-1",
+        auth_user_id: "auth-user-target",
+        name: "Ana Souza",
+        email: "ana@exemplo.com",
+        role: "attendant",
+        status: "active",
+        created_at: "2026-11-04T12:00:00Z",
+      },
+      error: null,
+    })
+    const selectMock = vi.fn().mockReturnValue({ single: singleMock })
+    const eqMock = vi.fn().mockReturnValue({ select: selectMock })
+    const updateMock = vi.fn().mockReturnValue({ eq: eqMock })
+    const fromMock = vi.fn().mockReturnValue({ update: updateMock })
+
+    vi.spyOn(supabaseAdminModule, "createSupabaseAdmin").mockReturnValue({
+      auth: { admin: { updateUserById: updateUserByIdMock } },
+      from: fromMock,
+    } as any)
+
+    const request = new Request("http://localhost/api/desktop/team", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "team-1", status: "active" }),
+    })
+
+    const response = await PATCH(request)
+    expect(response.status).toBe(200)
+    expect(updateUserByIdMock).toHaveBeenCalledWith("auth-user-target", { ban_duration: "none" })
+  })
+
+  it("impede que o administrador desative o próprio acesso", async () => {
+    vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+      authenticated: true,
+      role: "admin",
+      email: "admin@exemplo.com",
+      name: "Admin",
+    })
+
+    const selectTargetMock = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { email: "admin@exemplo.com" },
+          error: null,
+        }),
+      }),
+    })
+
+    vi.spyOn(supabaseAdminModule, "createSupabaseAdmin").mockReturnValue({
+      from: vi.fn().mockReturnValue({ select: selectTargetMock }),
+    } as any)
+
+    const request = new Request("http://localhost/api/desktop/team", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "admin-id", status: "inactive" }),
+    })
+
+    const response = await PATCH(request)
+    expect(response.status).toBe(400)
+    const json = await response.json()
+    expect(json.error).toBe("Você não pode desativar seu próprio acesso de administrador.")
   })
 })

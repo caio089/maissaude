@@ -43,6 +43,7 @@ import {
   ProfessionalsView,
   type ProfessionalsViewProps,
 } from "@/components/desktop/professionals-view"
+import { AssociateRulesCard, type AssociateRulesCardProps } from "@/components/desktop/associate-rules-card"
 
 import type { OperationalAlert } from "@/lib/metrics"
 import type { Professional } from "@/lib/types"
@@ -69,11 +70,11 @@ const mockProfessional: Professional = {
 
 describe("DashboardView Role Adaptations", () => {
   describe("Pure Logic / Rules", () => {
-    it("shouldShowRevenueKpi retorna false para attendant e true para admin/default", () => {
-      expect(shouldShowRevenueKpi("attendant")).toBe(false)
+    it("shouldShowRevenueKpi retorna true apenas para admin (fail-closed)", () => {
       expect(shouldShowRevenueKpi("admin")).toBe(true)
-      expect(shouldShowRevenueKpi(null)).toBe(true)
-      expect(shouldShowRevenueKpi(undefined)).toBe(true)
+      expect(shouldShowRevenueKpi("attendant")).toBe(false)
+      expect(shouldShowRevenueKpi(null)).toBe(false)
+      expect(shouldShowRevenueKpi(undefined)).toBe(false)
     })
 
     it("getDashboardActiveChart força appointments para attendant mesmo se revenue for solicitado", () => {
@@ -201,5 +202,21 @@ describe("ProfessionalsView Role Adaptations", () => {
       expect(html).toContain("Editar dados")
       expect(html).toContain("Abrir agenda individual")
     })
+  })
+})
+
+describe("AssociateRulesCard Role Adaptations", () => {
+  it("oculta o botão 'Salvar regras' para atendente", () => {
+    const html = renderToStaticMarkup(
+      React.createElement<AssociateRulesCardProps>(AssociateRulesCard, { role: "attendant" }),
+    )
+    expect(html).not.toContain("Salvar regras")
+  })
+
+  it("exibe o botão 'Salvar regras' para admin", () => {
+    const html = renderToStaticMarkup(
+      React.createElement<AssociateRulesCardProps>(AssociateRulesCard, { role: "admin" }),
+    )
+    expect(html).toContain("Salvar regras")
   })
 })

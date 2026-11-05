@@ -13,5 +13,5 @@ export default async function EquipePage() {
     redirect("/desktop")
   }
 
-  return <TeamView />
+  return <TeamView initialSession={session} />
 }

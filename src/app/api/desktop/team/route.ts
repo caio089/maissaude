@@ -131,6 +131,9 @@ export async function POST(request: Request) {
     .single()
 
   if (insertError) {
+    if (authData?.user?.id && db.auth?.admin?.deleteUser) {
+      await db.auth.admin.deleteUser(authData.user.id).catch(() => {})
+    }
     return NextResponse.json(
       { error: insertError.message || "Não foi possível registrar o membro na equipe." },
       { status: 500 }
@@ -195,6 +198,22 @@ export async function PATCH(request: Request) {
     )
   }
 
+  if (status === "inactive" && auth.session.email) {
+    const table = db.from("clinic_team")
+    if (typeof table.select === "function") {
+      const { data: targetMember } = await table
+        .select("email")
+        .eq("id", id.trim())
+        .single()
+      if (targetMember && targetMember.email.toLowerCase() === auth.session.email.toLowerCase()) {
+        return NextResponse.json(
+          { error: "Você não pode desativar seu próprio acesso de administrador." },
+          { status: 400 }
+        )
+      }
+    }
+  }
+
   const updatePayload: Record<string, any> = {
     updated_at: new Date().toISOString(),
   }
@@ -224,6 +243,14 @@ export async function PATCH(request: Request) {
       { error: "Membro da equipe não encontrado." },
       { status: 404 }
     )
+  }
+
+  if (status !== undefined && updated.auth_user_id && db.auth?.admin?.updateUserById) {
+    await db.auth.admin
+      .updateUserById(updated.auth_user_id, {
+        ban_duration: status === "inactive" ? "876000h" : "none",
+      })
+      .catch(() => {})
   }
 
   const member: ClinicTeamMember = {

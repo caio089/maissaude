@@ -34,6 +34,33 @@ export async function getClinicSession(): Promise<ClinicSessionInfo> {
     const email = claims?.email || ""
 
     if (isClinicRole(role)) {
+      let isInactive = false
+      try {
+        const { createSupabaseAdmin } = await import("@/lib/supabase/admin")
+        const adminDb = (createSupabaseAdmin && createSupabaseAdmin()) ?? (typeof (supabase as any).from === "function" ? (supabase as any) : null)
+        if (adminDb && typeof adminDb.from === "function") {
+          const userId = claims?.sub
+          const query = userId
+            ? adminDb.from("clinic_team").select("status").or(`email.eq.${email},auth_user_id.eq.${userId}`)
+            : adminDb.from("clinic_team").select("status").eq("email", email)
+          const { data: member } = await query.maybeSingle()
+          if (member && member.status === "inactive") {
+            isInactive = true
+          }
+        }
+      } catch {
+        // Continua caso o banco esteja indisponível
+      }
+
+      if (isInactive) {
+        return {
+          authenticated: false,
+          role: "attendant",
+          email: "",
+          name: "",
+        }
+      }
+
       const clinicRole = resolveClinicRole({ email, clinicRole: clinicRoleClaim })
       return {
         authenticated: true,

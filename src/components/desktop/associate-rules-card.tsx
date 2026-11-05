@@ -9,12 +9,34 @@ import { Switch } from "@/components/ui/switch"
 import { associateRulesError, MIN_ASSOCIATE_FEE, normalizeAssociateRules } from "@/lib/associate-rules"
 import { formatMoney } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
-import type { AssociateRules } from "@/lib/types"
+import type { AssociateRules, ClinicRole } from "@/lib/types"
 
-export function AssociateRulesCard() {
+export interface AssociateRulesCardProps {
+  role?: ClinicRole
+}
+
+export function AssociateRulesCard({ role: propRole }: AssociateRulesCardProps = {}) {
+  const [role, setRole] = useState<ClinicRole | null>(propRole ?? null)
   const saved = useDemoStore((state) => state.associateRules)
   const updateAssociateRules = useDemoStore((state) => state.updateAssociateRules)
   const [draft, setDraft] = useState<AssociateRules>(saved)
+
+  useEffect(() => {
+    if (propRole) {
+      setRole(propRole)
+      return
+    }
+    let active = true
+    fetch("/api/desktop/session", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.authenticated) setRole(data.role)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [propRole])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -31,6 +53,10 @@ export function AssociateRulesCard() {
   }, [updateAssociateRules])
 
   async function save() {
+    if (role === "attendant") {
+      toast.error("Ação restrita à administração da clínica.")
+      return
+    }
     const candidate: AssociateRules = {
       ...draft,
       fee: Number(draft.fee),
@@ -116,7 +142,9 @@ export function AssociateRulesCard() {
           Adicionar direito
         </Button>
       </div>
-      <Button type="button" onClick={save}>Salvar regras</Button>
+      {role !== "attendant" && (
+        <Button type="button" onClick={save}>Salvar regras</Button>
+      )}
     </section>
   )
 }

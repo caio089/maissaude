@@ -15,7 +15,7 @@ import {
   createClinicToken,
 } from "@/lib/clinic-token"
 import { hasClinicSession } from "@/lib/clinic-session"
-import { isSupabaseAdminConfigured } from "@/lib/supabase/admin"
+import { createSupabaseAdmin, isSupabaseAdminConfigured } from "@/lib/supabase/admin"
 import { isSupabaseBrowserConfigured } from "@/lib/supabase/env"
 import { createServerSupabase } from "@/lib/supabase/server"
 import type { AuthClaims } from "@/lib/supabase/session"
@@ -44,6 +44,20 @@ export async function loginClinic(_state: ClinicLoginState, formData: FormData):
         await supabase.auth.signOut()
         return { error: "Esta conta não abre o painel da clínica." }
       }
+
+      const adminDb = (createSupabaseAdmin && createSupabaseAdmin()) ?? (typeof (supabase as any).from === "function" ? (supabase as any) : null)
+      if (adminDb && typeof adminDb.from === "function") {
+        const userId = (data?.claims as AuthClaims | undefined)?.sub
+        const query = userId
+          ? adminDb.from("clinic_team").select("status").or(`email.eq.${email},auth_user_id.eq.${userId}`)
+          : adminDb.from("clinic_team").select("status").eq("email", email)
+        const { data: member } = await query.maybeSingle()
+        if (member && member.status === "inactive") {
+          await supabase.auth.signOut()
+          return { error: "Este acesso foi desativado pela administração da clínica." }
+        }
+      }
+
       redirect("/desktop")
     } catch (error) {
       if (isRedirect(error)) throw error

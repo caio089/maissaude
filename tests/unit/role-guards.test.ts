@@ -19,6 +19,7 @@ import {
   GET as getCashEntries,
   POST as postCashEntries,
 } from "@/app/api/desktop/cash-entries/route"
+import { POST as postServices } from "@/app/api/desktop/services/route"
 
 describe("Role Guards - Backend API Routes", () => {
   beforeEach(() => {
@@ -443,6 +444,80 @@ describe("Role Guards - Backend API Routes", () => {
       expect(response.status).toBe(200)
       const data = await response.json()
       expect(data.entries).toBeDefined()
+    })
+  })
+
+  describe("/api/desktop/services", () => {
+    it("POST retorna 401 se não estiver autenticado", async () => {
+      vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+        authenticated: false,
+        role: "attendant",
+        email: "",
+        name: "",
+      })
+
+      const request = new Request("http://localhost/api/desktop/services", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+
+      const response = await postServices(request)
+      expect(response.status).toBe(401)
+      const data = await response.json()
+      expect(data.error).toBe("Entre no painel da clínica.")
+    })
+
+    it("POST retorna 403 Forbidden para papel attendant", async () => {
+      vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+        authenticated: true,
+        role: "attendant",
+        email: "atendente@exemplo.com",
+        name: "Atendente",
+      })
+
+      const request = new Request("http://localhost/api/desktop/services", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          professionalId: "pro-1",
+          services: [
+            {
+              id: "srv-1",
+              name: "Consulta",
+              price: 100,
+              durationMin: 30,
+              modality: "presencial",
+              kind: "consulta",
+            },
+          ],
+        }),
+      })
+
+      const response = await postServices(request)
+      expect(response.status).toBe(403)
+      const data = await response.json()
+      expect(data.error).toBe("Atendentes possuem acesso somente leitura aos atendimentos.")
+    })
+
+    it("POST permite prosseguimento para papel admin", async () => {
+      vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+        authenticated: true,
+        role: "admin",
+        email: "admin@exemplo.com",
+        name: "Admin",
+      })
+
+      // Sem banco configurado ou corpo incompleto, não retorna 401 nem 403
+      const request = new Request("http://localhost/api/desktop/services", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+
+      const response = await postServices(request)
+      expect(response.status).not.toBe(401)
+      expect(response.status).not.toBe(403)
     })
   })
 })

@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Menu,
   Search,
+  ShieldCheck,
   Stethoscope,
   Users,
   Wallet,
@@ -40,7 +41,7 @@ import { clinicGate, logoutClinic } from "@/lib/clinic-actions"
 import { buildNotifications } from "@/lib/metrics"
 import { useDemoStore } from "@/lib/store"
 
-const NAV = [
+export const NAV = [
   { href: "/desktop", label: "Painel", icon: LayoutDashboard },
   { href: "/desktop/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/desktop/consultas", label: "Consultas", icon: ClipboardList },
@@ -52,6 +53,20 @@ const NAV = [
   { href: "/desktop/profissionais", label: "Profissionais", icon: Stethoscope },
 ]
 
+export interface DesktopSession {
+  authenticated: boolean
+  role: "admin" | "attendant"
+  email: string
+  name: string
+}
+
+export function getVisibleNav(role?: "admin" | "attendant" | null) {
+  return NAV.filter((item) => {
+    if (role === "attendant" && item.href === "/desktop/financeiro") return false
+    return true
+  }).concat(role === "admin" ? [{ href: "/desktop/equipe", label: "Equipe", icon: ShieldCheck }] : [])
+}
+
 function isActive(pathname: string, href: string) {
   if (href === "/desktop") return pathname === href
   return pathname.startsWith(href)
@@ -60,16 +75,37 @@ function isActive(pathname: string, href: string) {
 export function DesktopShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
-  const current = NAV.find((item) => isActive(pathname, item.href))
+  const [session, setSession] = useState<DesktopSession | null>(null)
 
   useEffect(() => {
     void clinicGate()
   }, [pathname])
 
+  useEffect(() => {
+    let active = true
+    fetch("/api/desktop/session")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data?.authenticated) {
+          setSession(data)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const visibleNav = useMemo(() => {
+    return getVisibleNav(session?.role)
+  }, [session?.role])
+
+  const current = visibleNav.find((item) => isActive(pathname, item.href)) || NAV.find((item) => isActive(pathname, item.href))
+
   return (
     <div className="min-h-dvh bg-background lg:grid lg:grid-cols-[252px_minmax(0,1fr)]" suppressHydrationWarning>
       <aside className="sticky top-0 hidden h-dvh flex-col bg-sidebar text-sidebar-foreground lg:flex" suppressHydrationWarning>
-        <SidebarBody pathname={pathname} />
+        <SidebarBody pathname={pathname} navItems={visibleNav} session={session} />
       </aside>
       <div className="flex min-w-0 flex-col" suppressHydrationWarning>
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-white/85 px-4 backdrop-blur lg:px-8">
@@ -83,7 +119,7 @@ export function DesktopShell({ children }: { children: React.ReactNode }) {
               <SheetHeader className="sr-only">
                 <SheetTitle>Menu da clínica</SheetTitle>
               </SheetHeader>
-              <SidebarBody pathname={pathname} onNavigate={() => setMenuOpen(false)} />
+              <SidebarBody pathname={pathname} navItems={visibleNav} session={session} onNavigate={() => setMenuOpen(false)} />
             </SheetContent>
           </Sheet>
           <Breadcrumb className="hidden min-w-0 sm:block">
@@ -101,7 +137,7 @@ export function DesktopShell({ children }: { children: React.ReactNode }) {
           </Breadcrumb>
           <HeaderSearch />
           <NotificationBell />
-          <ClinicMenu />
+          <ClinicMenu session={session} />
         </header>
         <main className="min-w-0 flex-1 px-4 py-6 lg:px-8">{children}</main>
       </div>
@@ -109,8 +145,20 @@ export function DesktopShell({ children }: { children: React.ReactNode }) {
   )
 }
 
-function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+function SidebarBody({
+  pathname,
+  navItems,
+  session,
+  onNavigate,
+}: {
+  pathname: string
+  navItems: { href: string; label: string; icon: any }[]
+  session: DesktopSession | null
+  onNavigate?: () => void
+}) {
   const clinic = useDemoStore((state) => state.data.clinic)
+  const roleBadge = session?.role === "attendant" ? "(Recepção)" : session?.role === "admin" ? "(Administrador)" : null
+
   return (
     <div className="flex h-full flex-col" suppressHydrationWarning>
       <div className="px-5 py-5" suppressHydrationWarning>
@@ -119,7 +167,7 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
         <p className="text-xs text-sidebar-foreground/65">{clinic.city}</p>
       </div>
       <nav className="flex-1 space-y-1 px-3" aria-label="Painel da clínica">
-        {NAV.map((item) => {
+        {navItems.map((item) => {
           const active = isActive(pathname, item.href)
           const Icon = item.icon
           return (
@@ -137,8 +185,10 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
           )
         })}
       </nav>
-      <div className="px-5 py-4">
-        <p className="text-xs font-medium text-sidebar-foreground/80">Acesso da equipe</p>
+      <div className="px-5 py-4 border-t border-sidebar-border/30">
+        <p className="text-xs font-medium text-sidebar-foreground/90 truncate">
+          {session?.name ? `${session.name} ${roleBadge || ""}` : "Acesso da equipe"}
+        </p>
         <p className="mt-1 text-xs leading-5 text-sidebar-foreground/55">{clinic.phone}</p>
       </div>
     </div>
@@ -213,20 +263,33 @@ function NotificationBell() {
   )
 }
 
-function ClinicMenu() {
+function ClinicMenu({ session }: { session: DesktopSession | null }) {
   const clinic = useDemoStore((state) => state.data.clinic)
+  const displayName = session?.name || clinic.name
+  const roleBadge = session?.role === "attendant" ? "(Recepção)" : session?.role === "admin" ? "(Administrador)" : null
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" className="max-w-44">
-          <span className="truncate">{clinic.name}</span>
+        <Button type="button" variant="outline" className="max-w-72 gap-1.5 px-3">
+          <span className="truncate">{displayName}</span>
+          {roleBadge && (
+            <span className="shrink-0 text-xs font-normal text-muted-foreground">
+              {roleBadge}
+            </span>
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel>
-          <span className="block">{clinic.name}</span>
-          <span className="block font-normal text-muted-foreground">{clinic.city}</span>
+          <span className="block font-medium truncate">{displayName}</span>
+          {roleBadge ? (
+            <span className="block text-xs font-normal text-muted-foreground">
+              {session?.role === "attendant" ? "Recepção" : "Administrador"} {session?.email ? `• ${session.email}` : ""}
+            </span>
+          ) : (
+            <span className="block font-normal text-muted-foreground">{clinic.city}</span>
+          )}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem

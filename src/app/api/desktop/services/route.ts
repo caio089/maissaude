@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server"
-import { hasClinicSession } from "@/lib/clinic-session"
+import { getClinicSession } from "@/lib/clinic-session"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 import type { Service } from "@/lib/types"
 import { ASAAS_PIX_MINIMUM } from "@/lib/asaas/minimums"
 
 export async function POST(request: Request) {
-  if (!(await hasClinicSession())) return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
+  const session = await getClinicSession()
+  if (!session.authenticated) {
+    return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
+  }
+  if (session.role === "attendant") {
+    return NextResponse.json(
+      { error: "Atendentes possuem acesso somente leitura aos atendimentos." },
+      { status: 403 }
+    )
+  }
   const db = createSupabaseAdmin()
   if (!db) return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
   try {

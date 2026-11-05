@@ -126,7 +126,7 @@ export function DesktopShell({ children, initialSession }: DesktopShellProps) {
                 <Menu />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[280px] bg-sidebar p-0 text-sidebar-foreground sm:max-w-none">
+            <SheetContent side="left" className="flex h-full w-[280px] flex-col bg-sidebar p-0 text-sidebar-foreground sm:max-w-none">
               <SheetHeader className="sr-only">
                 <SheetTitle>Menu da clínica</SheetTitle>
               </SheetHeader>
@@ -177,7 +177,7 @@ function SidebarBody({
         <p className="mt-4 text-sm font-medium text-white">{clinic.name}</p>
         <p className="text-xs text-sidebar-foreground/65">{clinic.city}</p>
       </div>
-      <nav className="flex-1 space-y-1 px-3" aria-label="Painel da clínica">
+      <nav className="flex-1 space-y-1 px-3 overflow-y-auto" aria-label="Painel da clínica">
         {navItems.map((item) => {
           const active = isActive(pathname, item.href)
           const Icon = item.icon

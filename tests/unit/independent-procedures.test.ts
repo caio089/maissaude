@@ -10,7 +10,12 @@ vi.mock("sonner", () => ({
 import * as clinicSessionModule from "@/lib/clinic-session"
 import * as supabaseAdminModule from "@/lib/supabase/admin"
 import { GET, POST } from "@/app/api/desktop/services/route"
-import { ServicesView, type ServicesViewProps } from "@/components/desktop/services-view"
+import {
+  ServicesView,
+  type ServicesViewProps,
+  canManageServices,
+  getServicesViewMode,
+} from "@/components/desktop/services-view"
 
 describe("Independent Procedures & Exames API (/api/desktop/services)", () => {
   beforeEach(() => {
@@ -455,6 +460,70 @@ describe("Independent Procedures & Exames API (/api/desktop/services)", () => {
         expect(html).toContain("Geral da Clínica (Sem médico específico)")
         expect(html).toContain("Procedimentos e exames da clínica cadastrados")
         expect(html).toContain("Salvar procedimentos da clínica")
+      } finally {
+        global.fetch = originalFetch
+      }
+    })
+
+    it("gerencia regras e viewMode para atendente e admin", () => {
+      expect(canManageServices("attendant")).toBe(false)
+      expect(canManageServices("admin")).toBe(true)
+      expect(canManageServices(null)).toBe(true)
+
+      expect(getServicesViewMode("attendant")).toEqual({
+        isReadOnly: true,
+        badgeLabel: "Modo somente leitura",
+      })
+      expect(getServicesViewMode("admin")).toEqual({
+        isReadOnly: false,
+        badgeLabel: null,
+      })
+    })
+
+    it("exibe badge de modo somente leitura e desabilita botões de salvar para atendente", () => {
+      const originalFetch = global.fetch
+      global.fetch = vi.fn().mockImplementation(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ professionals: [], offers: [] }),
+        })
+      ) as any
+
+      try {
+        const htmlConsultas = renderToStaticMarkup(
+          React.createElement<ServicesViewProps>(ServicesView, { initialRole: "attendant" })
+        )
+        expect(htmlConsultas).toContain("Modo somente leitura")
+        expect(htmlConsultas).toContain('title="Atendentes possuem acesso somente leitura"')
+
+        const htmlProcedimentos = renderToStaticMarkup(
+          React.createElement<ServicesViewProps>(ServicesView, {
+            initialTab: "procedimentos",
+            initialRole: "attendant",
+          })
+        )
+        expect(htmlProcedimentos).toContain("Modo somente leitura")
+        expect(htmlProcedimentos).toContain('title="Atendentes possuem acesso somente leitura"')
+      } finally {
+        global.fetch = originalFetch
+      }
+    })
+
+    it("não exibe badge de somente leitura nem título de bloqueio para admin", () => {
+      const originalFetch = global.fetch
+      global.fetch = vi.fn().mockImplementation(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ professionals: [], offers: [] }),
+        })
+      ) as any
+
+      try {
+        const html = renderToStaticMarkup(
+          React.createElement<ServicesViewProps>(ServicesView, { initialRole: "admin" })
+        )
+        expect(html).not.toContain("Modo somente leitura")
+        expect(html).not.toContain('title="Atendentes possuem acesso somente leitura"')
       } finally {
         global.fetch = originalFetch
       }

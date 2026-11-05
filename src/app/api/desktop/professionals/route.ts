@@ -42,6 +42,9 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as { id?: string; form?: ProfessionalInput; services?: Service[] }
     const form = body.form
+    if (form?.photoUrl && form.photoUrl.length > 2_500_000) {
+      return NextResponse.json({ error: "A foto enviada excede o limite máximo permitido." }, { status: 422 })
+    }
     const isSpecialtyValid =
       typeof form?.specialty === "string" &&
       form.specialty.trim().length >= 2 &&

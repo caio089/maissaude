@@ -21,6 +21,14 @@ import { useDemoStore } from "@/lib/store"
 import type { Appointment, Patient, PatientInput, PatientStatus, Payment, Professional } from "@/lib/types"
 import { hasErrors } from "@/lib/validation"
 
+export function getAppointmentProfessionalName(
+  professionalId?: string | null,
+  professionalName?: string | null
+): string {
+  if (!professionalId) return "Geral da Clínica"
+  return professionalName || "Não informado"
+}
+
 const PAGE_SIZE = 8
 
 export function PatientsView() {
@@ -458,7 +466,7 @@ export function PatientsView() {
                             </div>
                             <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                               <span>
-                                Profissional: <strong className="font-medium text-foreground">{professional?.name || "Não informado"}</strong>
+                                Profissional: <strong className="font-medium text-foreground">{getAppointmentProfessionalName(item.professionalId, professional?.name)}</strong>
                               </span>
                               <span className="capitalize">{item.modality}</span>
                             </div>

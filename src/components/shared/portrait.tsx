@@ -39,6 +39,9 @@ export function Portrait({
       src={resolvedPhoto || portraitUri(seed)}
       alt={`Foto de ${name}`}
       className={`${className} rounded-full object-cover ring-1 ring-foreground/10`}
+      onError={(e) => {
+        e.currentTarget.src = portraitUri(seed)
+      }}
     />
   )
 }

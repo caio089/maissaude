@@ -8,7 +8,22 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { formatMoney } from "@/lib/format"
 import { ASAAS_PIX_MINIMUM } from "@/lib/asaas/minimums"
 import { useDemoStore } from "@/lib/store"
-import type { Professional, Service } from "@/lib/types"
+import type { ClinicRole, Professional, Service } from "@/lib/types"
+
+export function canManageServices(role?: ClinicRole | null): boolean {
+  return role !== "attendant"
+}
+
+export function getServicesViewMode(role?: ClinicRole | null): {
+  isReadOnly: boolean
+  badgeLabel: string | null
+} {
+  const isReadOnly = role === "attendant"
+  return {
+    isReadOnly,
+    badgeLabel: isReadOnly ? "Modo somente leitura" : null,
+  }
+}
 
 export interface ClinicOffer {
   id: string
@@ -21,11 +36,15 @@ export interface ClinicOffer {
 
 export interface ServicesViewProps {
   initialTab?: "consultas" | "procedimentos"
+  initialRole?: ClinicRole
 }
 
 export function ServicesView({
   initialTab = "consultas",
+  initialRole,
 }: ServicesViewProps = {}) {
+  const [role, setRole] = useState<ClinicRole | null>(initialRole ?? null)
+  const isReadOnly = role === "attendant"
   const localProfessionals = useDemoStore((state) => state.data.professionals)
   const [serverProfessionals, setServerProfessionals] = useState<Professional[]>([])
   const [professionalId, setProfessionalId] = useState("")
@@ -62,6 +81,15 @@ export function ServicesView({
 
   useEffect(() => {
     const controller = new AbortController()
+
+    fetch("/api/desktop/session", { cache: "no-store", signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((sessionData) => {
+        if (!controller.signal.aborted && sessionData?.authenticated) {
+          setRole(sessionData.role)
+        }
+      })
+      .catch(() => {})
 
     Promise.allSettled([
       fetch("/api/desktop/professionals", { cache: "no-store", signal: controller.signal })
@@ -110,6 +138,10 @@ export function ServicesView({
   const needsImport = Boolean(selected && !serverProfessionals.some((p) => p.id === selected.id))
 
   async function saveDoctorServices() {
+    if (isReadOnly) {
+      toast.error("Atendentes possuem acesso somente leitura aos atendimentos.")
+      return
+    }
     if (
       !professionalId ||
       !services.length ||
@@ -157,6 +189,10 @@ export function ServicesView({
   }
 
   async function saveClinicProcedures() {
+    if (isReadOnly) {
+      toast.error("Atendentes possuem acesso somente leitura aos procedimentos.")
+      return
+    }
     if (
       !clinicServices.length ||
       clinicServices.some((s) => !s.name.trim() || s.price < ASAAS_PIX_MINIMUM || !Number.isInteger(s.durationMin) || s.durationMin <= 0)
@@ -186,7 +222,17 @@ export function ServicesView({
   return (
     <div className="space-y-6">
       <div>
-        <p className="section-kicker">Cadastro</p>
+        <div className="flex items-center gap-2">
+          <p className="section-kicker">Cadastro</p>
+          {isReadOnly && (
+            <span
+              data-testid="badge-readonly"
+              className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground ring-1 ring-border"
+            >
+              Modo somente leitura
+            </span>
+          )}
+        </div>
         <h1 className="mt-1 text-3xl font-semibold">Consultas e procedimentos</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Cadastre consultas por médico e procedimentos ambulatoriais ou exames gerais da clínica.
@@ -277,7 +323,8 @@ export function ServicesView({
             <Button
               type="button"
               onClick={() => void saveDoctorServices()}
-              disabled={saving || loading || Boolean(error) || !professionalId}
+              disabled={isReadOnly || saving || loading || Boolean(error) || !professionalId}
+              title={isReadOnly ? "Atendentes possuem acesso somente leitura" : undefined}
             >
               {saving ? "Salvando..." : "Salvar atendimentos"}
             </Button>
@@ -353,7 +400,8 @@ export function ServicesView({
             <Button
               type="button"
               onClick={() => void saveClinicProcedures()}
-              disabled={savingClinic || loadingClinic || clinicServices.length === 0}
+              disabled={isReadOnly || savingClinic || loadingClinic || clinicServices.length === 0}
+              title={isReadOnly ? "Atendentes possuem acesso somente leitura" : undefined}
             >
               {savingClinic ? "Salvando..." : "Salvar procedimentos da clínica"}
             </Button>

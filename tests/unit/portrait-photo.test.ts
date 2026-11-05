@@ -63,6 +63,19 @@ describe("Portrait component rendering", () => {
     expect(html).toContain('alt="Foto de Dra. Maria"')
     expect(html).toContain('data:image/svg+xml')
   })
+
+  it("executa fallback onError para portraitUri quando a imagem externa falha", () => {
+    const element = Portrait({
+      seed: "dra-maria",
+      photoUrl: "https://example.com/broken.jpg",
+      name: "Dra. Maria",
+    })
+
+    expect(element.props.onError).toBeTypeOf("function")
+    const fakeTarget = { src: "https://example.com/broken.jpg" }
+    element.props.onError({ currentTarget: fakeTarget })
+    expect(fakeTarget.src).toContain("data:image/svg+xml")
+  })
 })
 
 describe("/api/desktop/professionals photo_url and dynamic specialties", () => {
@@ -186,5 +199,47 @@ describe("/api/desktop/professionals photo_url and dynamic specialties", () => {
     expect(upsertedRow).toBeDefined()
     expect(upsertedRow.photo_url).toBe("https://example.com/joao.jpg")
     expect(upsertedRow.specialty).toBe("reumatologia")
+  })
+
+  it("POST recusa payload de foto que excede o limite de 2.5MB com 422", async () => {
+    vi.spyOn(clinicSession, "getClinicSession").mockResolvedValue({
+      authenticated: true,
+      role: "admin",
+      email: "admin@cuidarsaude.com",
+      name: "Administrador",
+    })
+
+    const mockDb = {
+      from: vi.fn(),
+    }
+    vi.spyOn(adminSupabase, "createSupabaseAdmin").mockReturnValue(mockDb as any)
+
+    const payload = {
+      id: "pro-heavy-1",
+      form: {
+        name: "Dr. Marcos",
+        specialty: "clinica-geral",
+        credentialCode: "CRM 12345",
+        bio: "Médico geral.",
+        price: 200,
+        workDays: [1, 2, 3],
+        startHour: "08:00",
+        endHour: "18:00",
+        active: true,
+        photoUrl: "data:image/jpeg;base64," + "a".repeat(2_500_001),
+      },
+      services: [],
+    }
+
+    const request = new Request("http://localhost/api/desktop/professionals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+
+    const response = await POST(request)
+    expect(response.status).toBe(422)
+    const data = await response.json()
+    expect(data.error).toBe("A foto enviada excede o limite máximo permitido.")
   })
 })

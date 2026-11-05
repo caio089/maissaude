@@ -783,7 +783,7 @@ function boxStyle(start: Date, end: Date) {
 
 const COLORS = ["#0d3b4c", "#127e7a", "#8a5a44", "#1d6f8a", "#3f6b4e", "#6d5a8e", "#a15c38", "#3d5a80"]
 
-function colorFor(id: string, roster: Professional[]) {
+function colorFor(id: string | null | undefined, roster: Professional[]) {
   const index = Math.max(0, roster.findIndex((item) => item.id === id))
   return COLORS[index % COLORS.length]
 }

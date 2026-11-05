@@ -1,7 +1,7 @@
 // Invalida dados demonstrativos salvos no localStorage em versões anteriores.
 export const SCHEMA_VERSION = 2
 
-export const SPECIALTIES = [
+const _SPECIALTIES = [
   "clinica-geral",
   "odontologia",
   "dermatologia",
@@ -11,9 +11,15 @@ export const SPECIALTIES = [
   "fisioterapia",
 ] as const
 
-export type Specialty = (typeof SPECIALTIES)[number]
+export type BuiltinSpecialty = (typeof _SPECIALTIES)[number]
+export type Specialty = BuiltinSpecialty | (string & {})
+export type SpecialtyKey = BuiltinSpecialty
 
-export const SPECIALTY_LABEL: Record<Specialty, string> = {
+export const SPECIALTIES = _SPECIALTIES as unknown as readonly BuiltinSpecialty[] & {
+  includes(searchElement: string, fromIndex?: number): searchElement is BuiltinSpecialty
+}
+
+export const SPECIALTY_LABEL: Record<string, string> = {
   "clinica-geral": "Clínica geral",
   odontologia: "Odontologia",
   dermatologia: "Dermatologia",
@@ -74,6 +80,7 @@ export interface Professional {
   services: Service[]
   active: boolean
   avatarSeed: string
+  photoUrl?: string | null
 }
 
 export interface Patient {
@@ -95,7 +102,7 @@ export interface Patient {
 export interface Appointment {
   id: string
   patientId: string
-  professionalId: string
+  professionalId: string | null
   serviceId: string
   startsAt: string
   endsAt: string
@@ -188,6 +195,15 @@ export interface MobileAccount {
 
 export type CatalogKind = "consulta" | "exame" | "cirurgia"
 
+export interface CatalogOffer {
+  kind: CatalogKind
+  serviceId: string
+  serviceName: string
+  professionalId: string | null
+  price: number
+  durationMin: number
+}
+
 export interface CartLine {
   key: string
   kind: CatalogKind
@@ -275,6 +291,7 @@ export interface ProfessionalInput {
   startHour: string
   endHour: string
   active: boolean
+  photoUrl?: string | null
 }
 
 export interface AppointmentInput {

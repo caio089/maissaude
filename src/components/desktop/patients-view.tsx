@@ -447,7 +447,7 @@ export function PatientsView() {
                       </div>
                     ) : (
                       focusedAppointments.map((item) => {
-                        const professional = allProfessionals.get(item.professionalId)
+                        const professional = item.professionalId ? allProfessionals.get(item.professionalId) : undefined
                         return (
                           <div key={item.id} className="rounded-2xl bg-muted/60 p-3.5 border transition-colors hover:bg-muted/80">
                             <div className="flex items-center justify-between gap-2">

@@ -17,6 +17,7 @@ export interface AuthorizationGuideInput {
     location: string
     startHour: string
     endHour: string
+    photoUrl?: string | null
   }
   serviceName: string
   procedures?: Array<{ code: string; description: string; doctor: string; sector: string }>

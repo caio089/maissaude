@@ -45,19 +45,29 @@ export async function GET(request: Request) {
 
   const clinicData = clinicRes.data?.[0]
   const clinic = {
-    name: clinicData?.name || DEFAULT_CLINIC.name,
-    phone: clinicData?.phone || DEFAULT_CLINIC.phone,
-    address: clinicData?.address || DEFAULT_CLINIC.address,
-    city: clinicData?.city || DEFAULT_CLINIC.city,
+    name: clinicData?.name?.trim() || DEFAULT_CLINIC.name,
+    phone: clinicData?.phone?.trim() || DEFAULT_CLINIC.phone,
+    address: clinicData?.address?.trim() || DEFAULT_CLINIC.address,
+    city: clinicData?.city?.trim() || DEFAULT_CLINIC.city,
   }
 
   const ids = (key: "patient_id" | "professional_id" | "service_id") => [...new Set(appointments.data.map((item) => item[key]).filter(Boolean))]
+  const serviceIds = ids("service_id")
   const [patients, professionals, services] = await Promise.all([
     db.from("patients").select("id,name,cpf,birth_date").in("id", ids("patient_id")),
-    db.from("professionals").select("id,name,specialty,credential_label,credential_code,location,start_hour,end_hour").in("id", ids("professional_id")),
-    db.from("professional_services").select("id,name,price").in("id", ids("service_id")),
+    db.from("professionals").select("id,name,specialty,credential_label,credential_code,location,start_hour,end_hour,photo_url").in("id", ids("professional_id")),
+    db.from("professional_services").select("id,name,price").in("id", serviceIds),
   ])
   if (patients.error || professionals.error || services.error) return NextResponse.json({ error: "Não foi possível carregar os dados dos atendimentos." }, { status: 500 })
+
+  const foundServiceIds = new Set((services.data || []).map((item) => item.id))
+  const missingServiceIds = serviceIds.filter((id) => !foundServiceIds.has(id))
+  let catalogOffers: Array<{ id: string; service_name: string; kind?: string }> = []
+  if (missingServiceIds.length > 0) {
+    const catalogRes = await db.from("catalog_offers").select("id,service_name,kind").in("id", missingServiceIds)
+    if (catalogRes.error) return NextResponse.json({ error: "Não foi possível carregar os procedimentos da clínica." }, { status: 500 })
+    catalogOffers = catalogRes.data || []
+  }
 
   return NextResponse.json({
     guides: guides.map((guide) => {
@@ -66,11 +76,36 @@ export async function GET(request: Request) {
       const patient = patients.data.find((item) => item.id === appointment?.patient_id)
       const professional = professionals.data.find((item) => item.id === appointment?.professional_id)
       const service = services.data.find((item) => item.id === appointment?.service_id)
+      const catalogOffer = catalogOffers.find((item) => item.id === appointment?.service_id)
       const valid = Boolean(appointment && appointment.status !== "cancelled" && appointment.payment_id === guide.payment_id && payment?.status === "paid" && !payment.simulated && payment.asaas_payment_id)
 
+      const isClinicIndependent = !appointment?.professional_id || !professional
       const specialty = (professional?.specialty && professional.specialty in SPECIALTY_LABEL ? professional.specialty : "clinica-geral") as Specialty
-      const specialtyLabel = SPECIALTY_LABEL[specialty] || "Clínica geral"
+      const doctorSpecialtyLabel = SPECIALTY_LABEL[specialty] || "Clínica geral"
 
+      const serviceName = service?.name || catalogOffer?.service_name || (isClinicIndependent ? "Procedimento" : "Consulta")
+
+      const guideProfessional = isClinicIndependent
+        ? {
+            name: "Geral da Clínica",
+            specialtyLabel: "Procedimento / Exame",
+            credentialLabel: "Unidade",
+            credentialCode: clinic.name,
+            location: clinic.address,
+            startHour: "08:00",
+            endHour: "18:00",
+            photoUrl: null,
+          }
+        : {
+            name: professional.name || "Profissional",
+            specialtyLabel: doctorSpecialtyLabel,
+            credentialLabel: professional.credential_label || "CRM",
+            credentialCode: professional.credential_code || "0000",
+            location: professional.location || clinic.address,
+            startHour: professional.start_hour ? String(professional.start_hour).slice(0, 5) : "08:00",
+            endHour: professional.end_hour ? String(professional.end_hour).slice(0, 5) : "18:00",
+            photoUrl: professional.photo_url || null,
+          }
 
       const guideInput: AuthorizationGuideInput = {
         reference: guide.id,
@@ -82,21 +117,13 @@ export async function GET(request: Request) {
         },
         clinic,
         appointmentAt: appointment?.starts_at || guide.issued_at,
-        professional: {
-          name: professional?.name || "Profissional",
-          specialtyLabel,
-          credentialLabel: professional?.credential_label || "CRM",
-          credentialCode: professional?.credential_code || "0000",
-          location: professional?.location || clinic.address,
-          startHour: professional?.start_hour ? String(professional.start_hour).slice(0, 5) : "08:00",
-          endHour: professional?.end_hour ? String(professional.end_hour).slice(0, 5) : "18:00",
-        },
-        serviceName: service?.name || "Consulta",
+        professional: guideProfessional,
+        serviceName,
         procedures: [{
           code: "CS-CONSULTA",
-          description: service?.name || "Consulta",
-          doctor: professional?.name || "Profissional",
-          sector: specialtyLabel,
+          description: serviceName,
+          doctor: guideProfessional.name,
+          sector: guideProfessional.specialtyLabel,
         }],
       }
 
@@ -107,12 +134,12 @@ export async function GET(request: Request) {
         appointmentStatus: appointment?.status ?? null,
         startsAt: appointment?.starts_at ?? null,
         patient: patient ? { id: patient.id, name: patient.name, cpf: patient.cpf, birthDate: patient.birth_date } : null,
-        professional: professional?.name || "Profissional",
-        service: service?.name || "Procedimento",
+        professional: guideProfessional.name,
+        photoUrl: guideProfessional.photoUrl,
+        service: serviceName,
         paymentStatus: payment?.status || "indisponível",
         guideInput,
       }
     }),
   })
 }
-

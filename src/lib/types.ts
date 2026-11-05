@@ -352,3 +352,15 @@ export interface AssociateInput {
   overdueMonths?: number
   nextDueDate?: string | null
 }
+
+export type ClinicRole = "admin" | "attendant"
+
+export interface ClinicTeamMember {
+  id: string
+  authUserId?: string | null
+  name: string
+  email: string
+  role: ClinicRole
+  status: "active" | "inactive"
+  createdAt: string
+}

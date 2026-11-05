@@ -114,13 +114,14 @@ export async function persistPatientAccount(input: {
   })
   if (accountError) throw new Error(accountError.message)
 
-  await admin.from("profiles").upsert({
+  const { error: profileError } = await admin.from("profiles").upsert({
     id: input.authUserId,
     role: "patient",
     patient_id: patientId,
     email: input.email,
     updated_at: new Date().toISOString(),
   })
+  if (profileError) throw new Error(profileError.message)
 
   const { data, error } = await admin.from("patients").select("*").eq("id", patientId).single()
   if (error || !data) throw new Error(error?.message || "Não foi possível gravar o paciente.")

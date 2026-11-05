@@ -168,8 +168,6 @@ export async function registerPatientAccount(input: {
     return { ok: false, message: "Este CPF já tem conta. Entre com a senha ou recupere o acesso." }
   }
 
-  const existing = await findPatientEmailByCpf(parsed.cpf)
-  if (existing) return { ok: false, message: "Este CPF já tem conta. Entre com a senha ou recupere o acesso." }
 
   const { data, error } = await admin.auth.admin.createUser({
     email: parsed.email,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { associateRulesError } from "@/lib/associate-rules"
-import { hasClinicSession } from "@/lib/clinic-session"
+import { getClinicSession, hasClinicSession } from "@/lib/clinic-session"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 import type { AssociateRules } from "@/lib/types"
 
@@ -22,7 +22,16 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  if (!(await hasClinicSession())) return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
+  const session = await getClinicSession()
+  if (!session.authenticated) {
+    return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
+  }
+  if (session.role !== "admin") {
+    return NextResponse.json(
+      { error: "Apenas administradores podem alterar as regras de mensalidade." },
+      { status: 403 }
+    )
+  }
   const admin = createSupabaseAdmin()
   if (!admin) return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
 
@@ -53,6 +62,10 @@ export async function PUT(request: Request) {
   } catch {
     return NextResponse.json({ error: "Revise os valores informados." }, { status: 422 })
   }
+}
+
+export async function POST(request: Request) {
+  return PUT(request)
 }
 
 function fromDatabase(data: {

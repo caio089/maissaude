@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { hasClinicSession } from "@/lib/clinic-session"
+import { getClinicSession, hasClinicSession } from "@/lib/clinic-session"
 import { createId } from "@/lib/format"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 import { SPECIALTIES, type ProfessionalInput, type Service } from "@/lib/types"
@@ -26,7 +26,16 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (!(await hasClinicSession())) return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
+  const session = await getClinicSession()
+  if (!session.authenticated) {
+    return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
+  }
+  if (session.role === "attendant") {
+    return NextResponse.json(
+      { error: "Atendentes possuem acesso somente leitura aos profissionais." },
+      { status: 403 }
+    )
+  }
   const db = createSupabaseAdmin()
   if (!db) return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
   try {
@@ -59,4 +68,22 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Não foi possível salvar os dados do profissional." }, { status: 422 })
   }
+}
+
+export async function PATCH(request: Request) {
+  return POST(request)
+}
+
+export async function DELETE(request: Request) {
+  const session = await getClinicSession()
+  if (!session.authenticated) {
+    return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
+  }
+  if (session.role === "attendant") {
+    return NextResponse.json(
+      { error: "Atendentes possuem acesso somente leitura aos profissionais." },
+      { status: 403 }
+    )
+  }
+  return NextResponse.json({ ok: true })
 }

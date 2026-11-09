@@ -63,43 +63,42 @@ export function GuideExportDialog({ open, onOpenChange, guide }: GuideExportDial
     setGenerating(true)
 
     const baseGuideInput = guide.guideInput
-    const guideInput: AuthorizationGuideInput = baseGuideInput
-      ? {
-          ...baseGuideInput,
-          professional: {
-            ...baseGuideInput.professional,
-            photoUrl: baseGuideInput.professional.photoUrl ?? guide.photoUrl ?? null,
-          },
-        }
-      : {
-          reference: guide.id,
-          authorizedAt: guide.issuedAt,
-          patient: {
-            name: guide.patient?.name || "Paciente",
-            cpf: guide.patient?.cpf || "",
-            birthDate: guide.patient?.birthDate || "2000-01-01",
-          },
-          clinic: {
-            name: "CuidarSaude",
-            phone: "(85) 3000-0000",
-            address: "Rua Exemplo, 123",
-            city: "Fortaleza/CE",
-          },
-          appointmentAt: guide.startsAt || guide.issuedAt,
-          professional: {
-            name: guide.professional,
-            specialtyLabel: "Clínica geral",
-            credentialLabel: "CRM",
-            credentialCode: "0000",
-            location: "Clínica CuidarSaude",
-            startHour: "08:00",
-            endHour: "18:00",
-            photoUrl: guide.photoUrl ?? null,
-          },
-          serviceName: guide.service,
-        }
+    const guideInput: AuthorizationGuideInput = baseGuideInput || {
+      reference: guide.id,
+      authorizedAt: guide.issuedAt,
+      patient: guide.patient
+        ? { name: guide.patient.name || null, cpf: guide.patient.cpf || null, birthDate: guide.patient.birthDate || null }
+        : {},
+      clinic: { name: "" },
+      appointmentAt: guide.startsAt || guide.issuedAt,
+      professional: {
+        name: guide.professional || null,
+        photoUrl: guide.photoUrl ?? null,
+      },
+      serviceName: guide.service,
+    }
+    const normalizedGuideInput: AuthorizationGuideInput = {
+      ...guideInput,
+      professional: {
+        ...guideInput.professional,
+        photoUrl: guideInput.professional.photoUrl ?? guide.photoUrl ?? null,
+      },
+    }
 
-    createAuthorizationGuide(guideInput)
+    const hasRealClinicData = Boolean(normalizedGuideInput.clinic.name?.trim())
+    const hasRealPatientData = Boolean(normalizedGuideInput.patient.name?.trim())
+    if (!hasRealClinicData || !hasRealPatientData) {
+      setBlob(null)
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+      toast.error("Os dados reais da clínica e do paciente não estão disponíveis para exportar esta guia.")
+      setGenerating(false)
+      return
+    }
+
+    createAuthorizationGuide(normalizedGuideInput)
       .then((generatedBlob) => {
         if (!active) return
         createdUrl = URL.createObjectURL(generatedBlob)

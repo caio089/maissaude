@@ -304,18 +304,18 @@ describe("GET /api/desktop/guides - Extended (Doctor Photos & Independent Proced
     expect(data.guides).toHaveLength(1)
     const guide = data.guides[0]
 
-    expect(guide.professional).toBe("Geral da Clínica")
+    expect(guide.professional).toBe("CuidarSaude Central")
     expect(guide.photoUrl).toBeNull()
     expect(guide.service).toBe("Eletrocardiograma")
 
     expect(guide.guideInput.professional).toEqual({
-      name: "Geral da Clínica",
+      name: "CuidarSaude Central",
       specialtyLabel: "Procedimento / Exame",
-      credentialLabel: "Unidade",
-      credentialCode: "CuidarSaude Central",
+      credentialLabel: null,
+      credentialCode: null,
       location: "Rua Floriano Peixoto, 200",
-      startHour: "08:00",
-      endHour: "18:00",
+      startHour: null,
+      endHour: null,
       photoUrl: null,
     })
 
@@ -323,7 +323,7 @@ describe("GET /api/desktop/guides - Extended (Doctor Photos & Independent Proced
     expect(guide.guideInput.procedures[0]).toEqual({
       code: "CS-CONSULTA",
       description: "Eletrocardiograma",
-      doctor: "Geral da Clínica",
+      doctor: "CuidarSaude Central",
       sector: "Procedimento / Exame",
     })
   })
@@ -437,9 +437,11 @@ describe("GET /api/desktop/guides - Extended (Doctor Photos & Independent Proced
     const data = await response.json()
     const guide = data.guides[0]
 
-    expect(guide.guideInput.clinic.name).toBe("CuidarSaude")
-    expect(guide.guideInput.clinic.phone).toBe("(85) 3000-0000")
-    expect(guide.guideInput.clinic.address).toBe("Rua Exemplo, 123")
-    expect(guide.guideInput.clinic.city).toBe("Fortaleza/CE")
+    expect(guide.guideInput.clinic.name).toBe("")
+    expect(guide.guideInput.clinic.phone).toBeNull()
+    expect(guide.guideInput.clinic.address).toBeNull()
+    expect(guide.guideInput.clinic.city).toBeNull()
+    expect(JSON.stringify(guide.guideInput)).not.toContain("Rua Exemplo")
+    expect(JSON.stringify(guide.guideInput)).not.toContain("3000-0000")
   })
 })

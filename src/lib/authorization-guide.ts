@@ -9,20 +9,20 @@ export const GUIDE_LOGO_SRC = "/brand/cuidarsaude-logo.png"
 export interface AuthorizationGuideInput {
   reference: string
   authorizedAt: string
-  patient: { name: string; cpf: string; birthDate: string }
-  clinic: { name: string; phone: string; address: string; city: string }
+  patient: { name?: string | null; cpf?: string | null; birthDate?: string | null }
+  clinic: { name: string; phone?: string | null; address?: string | null; city?: string | null }
   appointmentAt: string
   professional: {
-    name: string
-    specialtyLabel: string
-    credentialLabel: string
-    credentialCode: string
-    location: string
-    startHour: string
-    endHour: string
+    name?: string | null
+    specialtyLabel?: string | null
+    credentialLabel?: string | null
+    credentialCode?: string | null
+    location?: string | null
+    startHour?: string | null
+    endHour?: string | null
     photoUrl?: string | null
   }
-  serviceName: string
+  serviceName?: string | null
   procedures?: Array<{ code: string; description: string; doctor: string; sector: string }>
   associateBenefit?: AssociateBenefitSnapshot | null
 }
@@ -101,9 +101,9 @@ export async function createAuthorizationGuide(input: AuthorizationGuideInput) {
 
   let y = 248
   y = drawSection(context, y, "Dados do paciente", [
-    ["Matrícula", input.patient.cpf.replace(/\D/g, "")],
-    ["Nome", input.patient.name],
-    ["Data de nascimento", formatDay(input.patient.birthDate)],
+    ...optionalRow("Matrícula", input.patient.cpf?.replace(/\D/g, "")),
+    ...optionalRow("Nome", input.patient.name),
+    ...optionalRow("Data de nascimento", input.patient.birthDate ? formatDay(input.patient.birthDate) : undefined),
   ])
   y += 18
   if (input.associateBenefit) {
@@ -111,7 +111,8 @@ export async function createAuthorizationGuide(input: AuthorizationGuideInput) {
     y += 18
   }
 
-  const normalizedProName = input.professional.name
+  const professionalName = input.professional.name?.trim() || "Profissional não informado"
+  const normalizedProName = professionalName
     .trim()
     .toLowerCase()
     .normalize("NFD")
@@ -124,53 +125,61 @@ export async function createAuthorizationGuide(input: AuthorizationGuideInput) {
   if (!isGeneralClinic) {
     if (input.professional.photoUrl && isPhotoUrl(input.professional.photoUrl)) {
       photoToLoad = input.professional.photoUrl
-    } else if (isPhotoUrl(input.professional.name)) {
-      photoToLoad = input.professional.name
+    } else if (isPhotoUrl(professionalName)) {
+      photoToLoad = professionalName
     } else {
-      photoToLoad = portraitUri(input.professional.name)
+      photoToLoad = portraitUri(professionalName)
     }
   }
 
   const doctorPhoto = photoToLoad ? await loadOptionalImage(photoToLoad) : null
 
-  y = drawDoctorSection(
-    context,
-    y,
-    "Dados do médico",
-    [
-      ["Nome", input.professional.name],
-      ["Especialidade", input.professional.specialtyLabel],
-      ["Registro", `${input.professional.credentialLabel} ${input.professional.credentialCode}`],
-      ["Local", input.professional.location],
-      ["Atendimento", `${input.professional.startHour} às ${input.professional.endHour}`],
-    ],
-    doctorPhoto,
-    isGeneralClinic,
-    input.professional.name,
-  )
-  y += 18
+  const professionalRows: SectionRowItem[] = [
+    ...optionalRow("Nome", professionalName),
+    ...optionalRow("Especialidade", input.professional.specialtyLabel),
+    ...optionalRow("Registro", joinPresent(input.professional.credentialLabel, input.professional.credentialCode)),
+    ...optionalRow("Local", input.professional.location),
+    ...optionalRow("Atendimento", joinHours(input.professional.startHour, input.professional.endHour)),
+  ]
+  if (professionalRows.length > 0) {
+    y = drawDoctorSection(
+      context,
+      y,
+      "Dados do médico",
+      professionalRows.map(([label, value]) => [label, value]),
+      doctorPhoto,
+      isGeneralClinic,
+      professionalName,
+    )
+    y += 18
+  }
 
-  const city = splitCity(input.clinic.city)
-  const fullAddress = input.clinic.address + (city.municipio ? ` - ${city.municipio}${city.uf ? `/${city.uf}` : ""}` : "")
+  const city = splitCity(input.clinic.city || "")
+  const fullAddress = input.clinic.address
+    ? input.clinic.address + (city.municipio ? ` - ${city.municipio}${city.uf ? `/${city.uf}` : ""}` : "")
+    : ""
   const formattedAppointment = formatDate(input.appointmentAt, "dd/MM/yyyy 'às' HH:mm")
-  const formattedPhone = formatPhone(input.clinic.phone)
+  const formattedPhone = input.clinic.phone ? formatPhone(input.clinic.phone) : ""
 
   y = drawSection(context, y, "Local e data da realização", [
-    ["Unidade de atendimento", input.clinic.name],
-    ["Telefone de contato", formattedPhone],
-    ["Data e horário agendado", formattedAppointment, true],
-    ["Endereço completo", fullAddress],
-    ["Município / UF", city.uf ? `${city.municipio} · ${city.uf}` : city.municipio],
+    ...optionalRow("Unidade de atendimento", input.clinic.name),
+    ...optionalRow("Telefone de contato", formattedPhone),
+    ...optionalRow("Data e horário agendado", formattedAppointment, true),
+    ...optionalRow("Endereço completo", fullAddress),
+    ...optionalRow("Município / UF", city.uf ? `${city.municipio} · ${city.uf}` : city.municipio),
   ])
+  if (!input.clinic.address && !input.clinic.phone && !input.clinic.city) {
+    y -= 46
+  }
   y += 18
 
   const procedures = input.procedures?.length
     ? input.procedures
     : [{
         code: "CS-CONSULTA",
-        description: input.serviceName,
-        doctor: input.professional.name,
-        sector: input.professional.specialtyLabel,
+        description: input.serviceName || "Serviço não informado",
+        doctor: professionalName,
+        sector: input.professional.specialtyLabel || "—",
       }]
   y = drawProcedureTable(context, y, procedures)
   const bottom = drawFooter(context, input, y + 28)
@@ -560,7 +569,9 @@ function drawFooter(context: CanvasRenderingContext2D, input: AuthorizationGuide
   context.font = "600 13px system-ui, sans-serif"
   const warningBottom = fillWrapped(
     context,
-    `Qualquer cobrança adicional feita pela clínica, não aceite. Informe pelo telefone ${input.clinic.phone}.`,
+    input.clinic.phone
+      ? `Qualquer cobrança adicional feita pela clínica, não aceite. Informe pelo telefone ${input.clinic.phone}.`
+      : "Qualquer cobrança adicional feita pela clínica, não aceite.",
     48,
     y + 48,
     698,
@@ -570,6 +581,22 @@ function drawFooter(context: CanvasRenderingContext2D, input: AuthorizationGuide
   context.font = "11px system-ui, sans-serif"
   context.fillText("Guia oficial emitida pelo sistema CuidarSaude. Apresente este documento no atendimento.", 48, warningBottom + 16)
   return warningBottom + 28
+}
+
+function optionalRow(label: string, value?: string | null, highlight = false): Array<[string, string, boolean?]> {
+  const normalized = value?.trim()
+  return normalized ? [[label, normalized, highlight]] : []
+}
+
+function joinPresent(...values: Array<string | null | undefined>) {
+  return values.filter((value) => value?.trim()).join(" ").trim() || undefined
+}
+
+function joinHours(startHour?: string | null, endHour?: string | null) {
+  const start = startHour?.trim()
+  const end = endHour?.trim()
+  if (start && end) return `${start} às ${end}`
+  return start || end || undefined
 }
 
 function cropCanvas(source: HTMLCanvasElement, scale: number, bottom: number) {

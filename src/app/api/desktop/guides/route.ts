@@ -4,13 +4,6 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin"
 import { SPECIALTY_LABEL, type Specialty } from "@/lib/types"
 import type { AuthorizationGuideInput } from "@/lib/authorization-guide"
 
-const DEFAULT_CLINIC = {
-  name: "CuidarSaude",
-  phone: "(85) 3000-0000",
-  address: "Rua Exemplo, 123",
-  city: "Fortaleza/CE",
-}
-
 export async function GET(request: Request) {
   if (!(await hasClinicSession())) return NextResponse.json({ error: "Entre no painel da clínica." }, { status: 401 })
   const db = createSupabaseAdmin()
@@ -45,10 +38,10 @@ export async function GET(request: Request) {
 
   const clinicData = clinicRes.data?.[0]
   const clinic = {
-    name: clinicData?.name?.trim() || DEFAULT_CLINIC.name,
-    phone: clinicData?.phone?.trim() || DEFAULT_CLINIC.phone,
-    address: clinicData?.address?.trim() || DEFAULT_CLINIC.address,
-    city: clinicData?.city?.trim() || DEFAULT_CLINIC.city,
+    name: clinicData?.name?.trim() || "",
+    phone: clinicData?.phone?.trim() || null,
+    address: clinicData?.address?.trim() || null,
+    city: clinicData?.city?.trim() || null,
   }
 
   const ids = (key: "patient_id" | "professional_id" | "service_id") => [...new Set(appointments.data.map((item) => item[key]).filter(Boolean))]
@@ -83,27 +76,27 @@ export async function GET(request: Request) {
       const specialty = (professional?.specialty && professional.specialty in SPECIALTY_LABEL ? professional.specialty : "clinica-geral") as Specialty
       const doctorSpecialtyLabel = SPECIALTY_LABEL[specialty] || "Clínica geral"
 
-      const serviceName = service?.name || catalogOffer?.service_name || (isClinicIndependent ? "Procedimento" : "Consulta")
+      const serviceName = service?.name || catalogOffer?.service_name || null
 
       const guideProfessional = isClinicIndependent
         ? {
-            name: "Geral da Clínica",
+            name: clinic.name || null,
             specialtyLabel: "Procedimento / Exame",
-            credentialLabel: "Unidade",
-            credentialCode: clinic.name,
+            credentialLabel: null,
+            credentialCode: null,
             location: clinic.address,
-            startHour: "08:00",
-            endHour: "18:00",
+            startHour: null,
+            endHour: null,
             photoUrl: null,
           }
         : {
-            name: professional.name || "Profissional",
+            name: professional.name,
             specialtyLabel: doctorSpecialtyLabel,
-            credentialLabel: professional.credential_label || "CRM",
-            credentialCode: professional.credential_code || "0000",
+            credentialLabel: professional.credential_label || null,
+            credentialCode: professional.credential_code || null,
             location: professional.location || clinic.address,
-            startHour: professional.start_hour ? String(professional.start_hour).slice(0, 5) : "08:00",
-            endHour: professional.end_hour ? String(professional.end_hour).slice(0, 5) : "18:00",
+            startHour: professional.start_hour ? String(professional.start_hour).slice(0, 5) : null,
+            endHour: professional.end_hour ? String(professional.end_hour).slice(0, 5) : null,
             photoUrl: professional.photo_url || null,
           }
 
@@ -111,20 +104,20 @@ export async function GET(request: Request) {
         reference: guide.id,
         authorizedAt: guide.issued_at,
         patient: {
-          name: patient?.name || "Paciente",
-          cpf: patient?.cpf || "",
-          birthDate: patient?.birth_date || "2000-01-01",
+          name: patient?.name || null,
+          cpf: patient?.cpf || null,
+          birthDate: patient?.birth_date || null,
         },
         clinic,
         appointmentAt: appointment?.starts_at || guide.issued_at,
         professional: guideProfessional,
-        serviceName,
-        procedures: [{
+          serviceName,
+          ...(serviceName ? { procedures: [{
           code: "CS-CONSULTA",
           description: serviceName,
           doctor: guideProfessional.name,
           sector: guideProfessional.specialtyLabel,
-        }],
+          }] } : {}),
       }
 
       return {

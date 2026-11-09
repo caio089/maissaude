@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CheckCircle2, Copy, CreditCard, ExternalLink, IdCard, Plus, QrCode, Receipt, Search } from "lucide-react"
+import { CheckCircle2, Copy, CreditCard, ExternalLink, IdCard, Plus, Search } from "lucide-react"
 import { toast } from "sonner"
 import { AssociateRulesCard } from "@/components/desktop/associate-rules-card"
+import { FlowSteps } from "@/components/shared/flow-steps"
 import { Field } from "@/components/shared/field"
 import { EmptyState } from "@/components/shared/empty-state"
 import { FadeIn } from "@/components/shared/fade-in"
@@ -48,6 +49,7 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Associate | null>(null)
   const [form, setForm] = useState<AssociateInput>(() => emptyAssociateForm())
+  const [modalStep, setModalStep] = useState(0)
   const [errors, setErrors] = useState<FieldErrors<keyof AssociateInput>>({})
   const [newAssociateBillingType, setNewAssociateBillingType] = useState<BillingType>("PIX")
   const [saving, setSaving] = useState(false)
@@ -58,9 +60,7 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
   const [serverAssociates, setServerAssociates] = useState<Associate[]>([])
   const [loadingPatients, setLoadingPatients] = useState(false)
 
-  // Estados para modal de cobrança / pagamento multi-opções
   const [paymentModalAssociate, setPaymentModalAssociate] = useState<Associate | null>(null)
-  const [selectedBillingType, setSelectedBillingType] = useState<BillingType>("PIX")
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null)
   const [generatingPayment, setGeneratingPayment] = useState(false)
   const [registeringCounter, setRegisteringCounter] = useState(false)
@@ -171,6 +171,9 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
     setSelectedPatient(null)
     setPatientQuery("")
     setNewAssociateBillingType("PIX")
+    setModalStep(0)
+    setPaymentModalAssociate(null)
+    setPaymentResult(null)
     setFormOpen(true)
   }
 
@@ -208,6 +211,9 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
 
   function openEdit(associate: Associate) {
     setEditing(associate)
+    setModalStep(0)
+    setPaymentModalAssociate(null)
+    setPaymentResult(null)
     setForm({
       name: associate.name,
       cpf: associate.cpf,
@@ -222,8 +228,19 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
   }
 
   function openPaymentDialog(associate: Associate) {
+    setEditing(associate)
+    setForm({
+      name: associate.name,
+      cpf: associate.cpf,
+      phone: associate.phone,
+      email: associate.email,
+      status: associate.status,
+      overdueMonths: associate.overdueMonths ?? 0,
+      nextDueDate: associate.nextDueDate ?? null,
+    })
+    setErrors({})
+    setModalStep(2)
     setPaymentModalAssociate(associate)
-    setSelectedBillingType("PIX")
     setPaymentResult(null)
   }
 
@@ -378,11 +395,8 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
           toast.warning("Cobrança criada, mas a lista local não foi atualizada.")
         }
         setServerAssociates((prev) => [newAss, ...prev])
-        setFormOpen(false)
-
-        // Abre o diálogo de pagamento imediatamente com a cobrança gerada
+        setModalStep(2)
         setPaymentModalAssociate(newAss)
-        setSelectedBillingType(newAssociateBillingType)
         setPaymentResult({
           billingType: newAssociateBillingType,
           value: body.value,
@@ -439,6 +453,7 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
       return
     }
     toast.success("Associado atualizado.")
+    setModalStep(0)
     setFormOpen(false)
   }
 
@@ -647,7 +662,7 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
                       </span>
                     )}
                   </TableCell>
-                  <TableCell>{formatDate(associate.createdAt || (associate as any).created_at, "dd/MM/yyyy")}</TableCell>
+                  <TableCell>{formatDate(associate.createdAt || (associate as { created_at?: string }).created_at, "dd/MM/yyyy")}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <Button
@@ -680,10 +695,13 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
 
       {/* Modal de Criação / Edição de Associado */}
       <Dialog open={formOpen} onOpenChange={(open) => { if (!saving) setFormOpen(open) }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editing ? "Editar associado" : "Novo associado"}</DialogTitle>
+            <DialogTitle>{editing ? `Gerenciar ${editing.name}` : "Novo associado"}</DialogTitle>
           </DialogHeader>
+          <FlowSteps steps={["Dados", "Cobrança", "Pagamento"]} current={modalStep} />
+          {modalStep === 0 && (
+            <>
           {!editing ? (
             <div className="space-y-3">
               <div className="flex gap-2">
@@ -746,293 +764,68 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
               Mensalidade de {formatMoney(rules.fee)}. A associação é ativada automaticamente com a confirmação ou recebimento presencial.
             </p>
           </div>
+            </>
+          )}
+          {modalStep === 1 && (
+            <>
+              <section className="space-y-3 rounded-lg border p-4">
+                <div>
+                  <p className="text-sm font-semibold">{form.name}</p>
+                  <p className="text-xs text-muted-foreground">CPF {formatCpf(form.cpf)} · Mensalidade {formatMoney(rules.fee)}</p>
+                </div>
+                <div className="grid grid-cols-3 gap-2" role="group" aria-label="Forma de pagamento">
+                  {(["PIX", "BOLETO", "CREDIT_CARD"] as BillingType[]).map((method) => (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => setNewAssociateBillingType(method)}
+                      className={`rounded-md border p-2 text-xs font-medium ${newAssociateBillingType === method ? "border-teal bg-accent text-teal" : "bg-background text-muted-foreground"}`}
+                    >
+                      {method === "PIX" ? "Pix" : method === "BOLETO" ? "Boleto" : "Cartão"}
+                    </button>
+                  ))}
+                </div>
+                {newAssociateBillingType === "BOLETO" ? (
+                  <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">O boleto pode levar até 3 dias úteis para compensar.</p>
+                ) : null}
+              </section>
+            </>
+          )}
+          {modalStep === 2 && paymentResult && paymentModalAssociate ? (
+            <PaymentResultPanel
+              result={paymentResult}
+              associate={paymentModalAssociate}
+              rules={rules}
+              registeringCounter={registeringCounter}
+              generatingPayment={generatingPayment}
+              onCounterPayment={() => void handleCounterPayment(paymentModalAssociate)}
+              onGenerate={(method) => void generatePaymentForAssociate(paymentModalAssociate, method)}
+              onReset={() => setPaymentResult(null)}
+            />
+          ) : null}
           <DialogFooter>
-            <Button
-              type="button"
-              disabled={saving || (!editing && source === "patient" && !selectedPatient)}
-              onClick={() => void save()}
-            >
-              {saving ? "Processando..." : editing ? "Salvar alterações" : "Cadastrar e gerar cobrança"}
-            </Button>
+            {modalStep > 0 ? (
+              <Button type="button" variant="outline" onClick={() => setModalStep(modalStep - 1)}>Voltar</Button>
+            ) : null}
+            {modalStep === 0 ? (
+              <Button
+                type="button"
+                disabled={saving || (!editing && source === "patient" && !selectedPatient)}
+                onClick={() => { setModalStep(editing ? 2 : 1) }}
+              >
+                {saving ? "Processando..." : "Continuar"}
+              </Button>
+            ) : modalStep === 1 ? (
+              <Button type="button" disabled={saving} onClick={() => void save()}>
+                {saving ? "Processando..." : editing ? "Salvar alterações" : "Cadastrar e gerar cobrança"}
+              </Button>
+            ) : (
+              <Button type="button" variant="outline" onClick={() => { setFormOpen(false); setPaymentModalAssociate(null); setPaymentResult(null) }}>Concluir</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Modal Completo de Pagamento / Cobrança e Balcão */}
-      <Dialog
-        open={Boolean(paymentModalAssociate)}
-        onOpenChange={(open) => {
-          if (!open && !registeringCounter && !generatingPayment) {
-            setPaymentModalAssociate(null)
-            setPaymentResult(null)
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Cobrança & Pagamento</DialogTitle>
-          </DialogHeader>
-
-          {paymentModalAssociate ? (
-            <div className="space-y-4">
-              {/* Resumo do associado e valores */}
-              <div className="rounded-lg bg-muted/50 p-3.5 space-y-1.5 border">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-sm">{paymentModalAssociate.name}</span>
-                  {paymentModalAssociate.status === "active" && (
-                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-                      Em dia
-                    </span>
-                  )}
-                  {paymentModalAssociate.status === "overdue" && (
-                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
-                      {(paymentModalAssociate.overdueMonths || 1) === 1 ? "1 mês atraso" : `${paymentModalAssociate.overdueMonths} meses atraso`}
-                    </span>
-                  )}
-                  {paymentModalAssociate.status === "cancelled" && (
-                    <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-800">
-                      Cancelado
-                    </span>
-                  )}
-                  {(!["active", "overdue", "cancelled"].includes(paymentModalAssociate.status) || paymentModalAssociate.status === "inactive") && (
-                    <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                      Aguardando
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">CPF: {formatCpf(paymentModalAssociate.cpf)}</p>
-                <div className="pt-1 border-t text-xs flex justify-between items-baseline font-medium">
-                  <span className="text-muted-foreground">Valor da mensalidade:</span>
-                  <span className="text-sm font-semibold text-foreground">
-                    {paymentModalAssociate.status === "overdue" && (paymentModalAssociate.overdueMonths || 0) > 1 ? (
-                      <>
-                        {formatMoney(rules.fee * paymentModalAssociate.overdueMonths!)}{" "}
-                        <span className="text-xs font-normal text-muted-foreground">
-                          ({paymentModalAssociate.overdueMonths}x {formatMoney(rules.fee)})
-                        </span>
-                      </>
-                    ) : (
-                      formatMoney(rules.fee)
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              {/* Botão de Recebimento no Balcão */}
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3.5 space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-bold text-emerald-950 uppercase tracking-wide">Recebimento presencial</p>
-                    <p className="text-xs text-emerald-800 mt-0.5">
-                      O paciente pagou em dinheiro, maquininha ou Pix presencial da recepção.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="default"
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-                  disabled={registeringCounter}
-                  onClick={() => void handleCounterPayment(paymentModalAssociate)}
-                >
-                  <CheckCircle2 className="size-4 mr-2" />
-                  {registeringCounter ? "Registrando recebimento..." : "Registrar recebimento no balcão"}
-                </Button>
-              </div>
-
-              {/* Canais Digitais Asaas */}
-              <div className="space-y-3 pt-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                    Cobrança digital Asaas
-                  </span>
-                  <div className="flex rounded-md border p-0.5 bg-muted">
-                    <button
-                      type="button"
-                      className={`px-2.5 py-1 text-xs font-medium rounded transition-colors ${
-                        selectedBillingType === "PIX"
-                          ? "bg-background shadow-xs text-foreground font-semibold"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                      onClick={() => {
-                        setSelectedBillingType("PIX")
-                        setPaymentResult(null)
-                      }}
-                    >
-                      Pix
-                    </button>
-                    <button
-                      type="button"
-                      className={`px-2.5 py-1 text-xs font-medium rounded transition-colors ${
-                        selectedBillingType === "BOLETO"
-                          ? "bg-background shadow-xs text-foreground font-semibold"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                      onClick={() => {
-                        setSelectedBillingType("BOLETO")
-                        setPaymentResult(null)
-                      }}
-                    >
-                      Boleto
-                    </button>
-                    <button
-                      type="button"
-                      className={`px-2.5 py-1 text-xs font-medium rounded transition-colors ${
-                        selectedBillingType === "CREDIT_CARD"
-                          ? "bg-background shadow-xs text-foreground font-semibold"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                      onClick={() => {
-                        setSelectedBillingType("CREDIT_CARD")
-                        setPaymentResult(null)
-                      }}
-                    >
-                      Cartão
-                    </button>
-                  </div>
-                </div>
-
-                {!paymentResult ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    disabled={generatingPayment}
-                    onClick={() => void generatePaymentForAssociate(paymentModalAssociate, selectedBillingType)}
-                  >
-                    {generatingPayment
-                      ? "Gerando cobrança..."
-                      : `Gerar cobrança via ${selectedBillingType === "PIX" ? "Pix" : selectedBillingType === "BOLETO" ? "Boleto" : "Cartão"}`}
-                  </Button>
-                ) : (
-                  <div className="rounded-lg border p-3 space-y-3 bg-muted/20">
-                    {/* Pix Resultado */}
-                    {paymentResult.billingType === "PIX" && (
-                      <div className="space-y-3 text-center">
-                        {paymentResult.pix?.encodedImage ? (
-                          <div className="flex justify-center">
-                            <img
-                              src={
-                                paymentResult.pix.encodedImage.startsWith("data:")
-                                  ? paymentResult.pix.encodedImage
-                                  : `data:image/png;base64,${paymentResult.pix.encodedImage}`
-                              }
-                              alt="QR Code Pix"
-                              className="size-44 rounded-md border bg-white p-2 shadow-xs"
-                            />
-                          </div>
-                        ) : null}
-                        {paymentResult.pix?.payload ? (
-                          <div className="space-y-1.5 text-left">
-                            <label className="text-xs font-medium text-muted-foreground">Pix Copia e Cola:</label>
-                            <div className="flex gap-2">
-                              <Input readOnly value={paymentResult.pix.payload} className="h-9 font-mono text-xs" />
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  void navigator.clipboard.writeText(paymentResult.pix!.payload).then(() => {
-                                    toast.success("Código Pix copiado!")
-                                  })
-                                }}
-                              >
-                                <Copy className="size-3.5 mr-1" /> Copiar
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">Cobrança Pix gerada. Aguarde confirmação.</p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Boleto Resultado */}
-                    {paymentResult.billingType === "BOLETO" && (
-                      <div className="space-y-3">
-                        {paymentResult.bankSlipBarcode || paymentResult.identificationField ? (
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-medium text-muted-foreground">Linha digitável / Código de barras:</label>
-                            <div className="flex gap-2">
-                              <Input
-                                readOnly
-                                value={paymentResult.bankSlipBarcode || paymentResult.identificationField || ""}
-                                className="h-9 font-mono text-xs"
-                              />
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  const code = paymentResult.bankSlipBarcode || paymentResult.identificationField || ""
-                                  void navigator.clipboard.writeText(code).then(() => {
-                                    toast.success("Código de barras copiado!")
-                                  })
-                                }}
-                              >
-                                <Copy className="size-3.5 mr-1" /> Copiar
-                              </Button>
-                            </div>
-                          </div>
-                        ) : null}
-                        {paymentResult.bankSlipUrl ? (
-                          <Button asChild className="w-full" variant="outline">
-                            <a href={paymentResult.bankSlipUrl} target="_blank" rel="noreferrer">
-                              <ExternalLink className="size-4 mr-2" /> Abrir / Baixar Boleto Bancário
-                            </a>
-                          </Button>
-                        ) : null}
-                      </div>
-                    )}
-
-                    {/* Cartão de Crédito Resultado */}
-                    {paymentResult.billingType === "CREDIT_CARD" && (
-                      <div className="space-y-3">
-                        <p className="text-xs text-muted-foreground">
-                          O paciente preenche os dados do cartão em página protegida da Asaas para ativação da recorrência.
-                        </p>
-                        {paymentResult.paymentUrl ? (
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <Button asChild className="w-full">
-                              <a href={paymentResult.paymentUrl} target="_blank" rel="noreferrer">
-                                <ExternalLink className="size-4 mr-2" /> Abrir link Asaas
-                              </a>
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="w-full"
-                              onClick={() => {
-                                void navigator.clipboard.writeText(paymentResult.paymentUrl!).then(() => {
-                                  toast.success("Link copiado!")
-                                })
-                              }}
-                            >
-                              <Copy className="size-4 mr-2" /> Copiar link
-                            </Button>
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
-
-                    <div className="pt-1 flex justify-end">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="text-xs text-muted-foreground"
-                        onClick={() => setPaymentResult(null)}
-                      >
-                        Gerar outra forma de pagamento
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
     </FadeIn>
   )
 }
@@ -1048,4 +841,115 @@ function emptyAssociateForm(): AssociateInput {
     status: "inactive",
     overdueMonths: 0,
   }
+}
+
+function PaymentResultPanel({
+  result,
+  associate,
+  rules,
+  registeringCounter,
+  generatingPayment,
+  onCounterPayment,
+  onGenerate,
+  onReset,
+}: {
+  result: PaymentResult
+  associate: Associate
+  rules: { fee: number }
+  registeringCounter: boolean
+  generatingPayment: boolean
+  onCounterPayment: () => void
+  onGenerate: (method: BillingType) => void
+  onReset: () => void
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg bg-muted/50 p-3.5 text-sm">
+        <div className="flex items-center justify-between">
+          <span className="font-semibold">{associate.name}</span>
+          <span className="text-xs text-muted-foreground">{associate.status === "active" ? "Em dia" : associate.status === "overdue" ? "Em atraso" : associate.status}</span>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">CPF {formatCpf(associate.cpf)} · Mensalidade {formatMoney(rules.fee)}</p>
+      </div>
+
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3.5 space-y-2">
+        <p className="text-xs font-bold text-emerald-950 uppercase tracking-wide">Recebimento presencial</p>
+        <p className="text-xs text-emerald-800">Registre pagamento em dinheiro, maquininha ou Pix presencial.</p>
+        <Button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={registeringCounter} onClick={onCounterPayment}>
+          <CheckCircle2 className="mr-2 size-4" />
+          {registeringCounter ? "Registrando..." : "Registrar recebimento no balcão"}
+        </Button>
+      </div>
+
+      <section className="space-y-3 rounded-lg border p-3.5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Cobrança digital</p>
+            <p className="text-sm font-semibold">{formatMoney(result.value)} · {result.billingType === "PIX" ? "Pix" : result.billingType === "BOLETO" ? "Boleto" : "Cartão"}</p>
+          </div>
+          <Button type="button" size="sm" variant="ghost" onClick={onReset}>Trocar método</Button>
+        </div>
+
+        {result.billingType === "PIX" ? (
+          <div className="space-y-3 text-center">
+            {result.pix?.encodedImage ? (
+              <img
+                src={result.pix.encodedImage.startsWith("data:") ? result.pix.encodedImage : `data:image/png;base64,${result.pix.encodedImage}`}
+                alt="QR Code Pix"
+                className="mx-auto size-40 rounded-md border bg-white p-2"
+              />
+            ) : null}
+            {result.pix?.payload ? (
+              <div className="space-y-2 text-left">
+                <Input readOnly value={result.pix.payload} className="font-mono text-xs" aria-label="Pix copia e cola" />
+                <Button type="button" variant="outline" className="w-full" onClick={() => void navigator.clipboard.writeText(result.pix!.payload).then(() => toast.success("Código Pix copiado!"))}>
+                  <Copy className="mr-2 size-4" /> Copiar Pix
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">A cobrança foi criada. Aguarde a confirmação.</p>
+            )}
+          </div>
+        ) : null}
+
+        {result.billingType === "BOLETO" ? (
+          <div className="space-y-3">
+            {result.bankSlipBarcode || result.identificationField ? (
+              <div className="space-y-2">
+                <Input readOnly value={result.bankSlipBarcode || result.identificationField || ""} className="font-mono text-xs" aria-label="Linha digitável do boleto" />
+                <Button type="button" variant="outline" className="w-full" onClick={() => void navigator.clipboard.writeText(result.bankSlipBarcode || result.identificationField || "").then(() => toast.success("Linha digitável copiada!"))}>
+                  <Copy className="mr-2 size-4" /> Copiar linha digitável
+                </Button>
+              </div>
+            ) : null}
+            <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">O boleto pode levar até 3 dias úteis para compensar.</p>
+            {result.bankSlipUrl ? (
+              <Button asChild variant="outline" className="w-full">
+                <a href={result.bankSlipUrl} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 size-4" /> Abrir boleto</a>
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {result.billingType === "CREDIT_CARD" ? (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">O paciente preenche os dados do cartão em página protegida da Asaas.</p>
+            {result.paymentUrl ? (
+              <Button asChild variant="outline" className="w-full">
+                <a href={result.paymentUrl} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 size-4" /> Abrir link Asaas</a>
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          {(["PIX", "BOLETO", "CREDIT_CARD"] as BillingType[]).map((method) => (
+            <Button key={method} type="button" variant="outline" className="text-xs" onClick={() => onGenerate(method)} disabled={generatingPayment}>
+              {generatingPayment ? "Gerando..." : `Gerar ${method === "PIX" ? "Pix" : method === "BOLETO" ? "Boleto" : "Cartão"}`}
+            </Button>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
 }

@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect } from "react"
-import { CalendarDays, House, Search, UserRound } from "lucide-react"
+import { CalendarDays, FileText, House, Search, UserRound } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { useDemoStore } from "@/lib/store"
@@ -13,6 +13,7 @@ const ITEMS = [
   { href: "/mobile", label: "Início", icon: House },
   { href: "/mobile/buscar", label: "Buscar", icon: Search },
   { href: "/mobile/consultas", label: "Consultas", icon: CalendarDays },
+  { href: "/mobile/guias", label: "Guias", icon: FileText },
   { href: "/mobile/perfil", label: "Perfil", icon: UserRound },
 ]
 
@@ -80,7 +81,7 @@ function AccountGate() {
 function BottomNav() {
   const pathname = usePathname()
   return (
-    <nav className="grid grid-cols-4 border-t bg-white/95 px-2 py-2 backdrop-blur" aria-label="Aplicativo do paciente">
+    <nav className="grid grid-cols-5 border-t bg-white/95 px-1 py-2 backdrop-blur" aria-label="Aplicativo do paciente">
       {ITEMS.map((item) => {
         const active = item.href === "/mobile" ? pathname === item.href : pathname.startsWith(item.href)
         const Icon = item.icon

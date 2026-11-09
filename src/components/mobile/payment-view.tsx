@@ -8,21 +8,24 @@ import {
   AlertTriangle,
   ArrowLeft,
   BadgeCheck,
+  Banknote,
   CreditCard,
   Loader2,
   QrCode,
   Search,
 } from "lucide-react"
 import { toast } from "sonner"
+import { FlowSteps } from "@/components/shared/flow-steps"
 import { AssociateSubscriptionModal } from "@/components/mobile/associate-subscription"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { calculateAssociateQuote } from "@/lib/associate-rules"
 import { minimumAsaasCharge, minimumAsaasChargeMessage } from "@/lib/asaas/minimums"
 import { formatDate, formatMoney } from "@/lib/format"
 import { useDemoStore } from "@/lib/store"
 import { type Associate, type AssociateRules, SPECIALTY_LABEL } from "@/lib/types"
 
-type BillingType = "PIX" | "CREDIT_CARD"
+type BillingType = "PIX" | "CREDIT_CARD" | "BOLETO"
 type AssociateAnswer = "yes" | "no"
 type ChargeResult = {
   value: number
@@ -30,6 +33,8 @@ type ChargeResult = {
   invoiceUrl: string | null
   pix: { payload: string | null; encodedImage: string | null } | null
   pixUnavailable?: boolean
+  bankSlipUrl: string | null
+  identificationField: string | null
 }
 
 type ServerMembership = {
@@ -190,6 +195,8 @@ export function PaymentView() {
     return (
       <div className="px-4 pt-6 pb-8 space-y-4">
         <div>
+          <FlowSteps steps={["Agendamento", "Pagamento", "Confirmação"]} current={2} />
+          <div className="mt-4" />
           <p className="text-xs font-medium uppercase tracking-wide text-teal">Pagamento</p>
           <h1 className="mt-1 text-2xl font-semibold">Cobrança gerada</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -200,7 +207,7 @@ export function PaymentView() {
         {charges.map((charge, index) => (
           <section key={index} className="surface-card p-4 space-y-3">
             <p className="font-medium">
-              {charge.billingType === "PIX" ? "Pix" : "Cartão de Crédito"} · {formatMoney(charge.value)}
+              {charge.billingType === "PIX" ? "Pix" : charge.billingType === "BOLETO" ? "Boleto" : "Cartão de Crédito"} · {formatMoney(charge.value)}
             </p>
             {charge.pix?.encodedImage ? (
               <img
@@ -228,10 +235,31 @@ export function PaymentView() {
                 O QR Code Pix não pôde ser gerado agora. Utilize o link direto da Asaas abaixo.
               </p>
             ) : null}
+            {charge.billingType === "BOLETO" ? (
+              <>
+                {charge.identificationField ? (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">Linha digitável / código de barras</p>
+                    <Input readOnly value={charge.identificationField} className="font-mono text-xs" aria-label="Linha digitável do boleto" />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => void navigator.clipboard.writeText(charge.identificationField || "").then(() => toast.success("Linha digitável copiada!"))}
+                    >
+                      Copiar linha digitável
+                    </Button>
+                  </div>
+                ) : null}
+                <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+                  O boleto pode levar até 3 dias úteis para compensar. A consulta continuará pendente até a confirmação.
+                </p>
+              </>
+            ) : null}
             {charge.invoiceUrl ? (
               <Button asChild className="w-full">
                 <a href={charge.invoiceUrl} target="_blank" rel="noreferrer">
-                  {charge.billingType === "CREDIT_CARD" ? "Pagar com cartão na Asaas" : "Abrir cobrança na Asaas"}
+                  {charge.billingType === "CREDIT_CARD" ? "Pagar com cartão na Asaas" : charge.billingType === "BOLETO" ? "Abrir boleto na Asaas" : "Abrir cobrança na Asaas"}
                 </a>
               </Button>
             ) : null}
@@ -288,6 +316,8 @@ export function PaymentView() {
       </div>
 
       <div>
+        <FlowSteps steps={["Agendamento", "Pagamento", "Confirmação"]} current={1} />
+        <div className="mt-4" />
         <p className="text-xs font-medium uppercase tracking-wide text-teal">Etapa final</p>
         <h1 className="mt-1 text-2xl font-semibold">Pagamento da consulta</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -542,6 +572,21 @@ export function PaymentView() {
             </button>
             <button
               type="button"
+              onClick={() => setBillingType("BOLETO")}
+              className={`flex items-center gap-3 rounded-2xl p-3 text-left ring-1 transition-colors ${
+                billingType === "BOLETO" ? "bg-amber-50 ring-amber-500" : "bg-white ring-border"
+              }`}
+            >
+              <span className="grid size-11 place-items-center rounded-xl bg-amber-100 text-amber-700">
+                <Banknote className="size-5" />
+              </span>
+              <div>
+                <span className="block font-medium text-sm">Boleto</span>
+                <span className="block text-xs text-muted-foreground">Linha digitável e compensação em até 3 dias úteis</span>
+              </div>
+            </button>
+            <button
+              type="button"
               onClick={() => setBillingType("CREDIT_CARD")}
               className={`flex items-center gap-3 rounded-2xl p-3 text-left ring-1 transition-colors ${
                 billingType === "CREDIT_CARD" ? "bg-[#e9eef8] ring-[#365f8b]" : "bg-white ring-border"
@@ -563,6 +608,12 @@ export function PaymentView() {
             </p>
           ) : null}
 
+          {billingType === "BOLETO" ? (
+            <p className="text-xs text-amber-900 bg-amber-50 p-2.5 rounded-xl">
+              O boleto pode levar até 3 dias úteis para compensar. A consulta continuará pendente até a confirmação.
+            </p>
+          ) : null}
+
           <Button
             type="button"
             className="w-full h-12 mt-2"
@@ -578,7 +629,9 @@ export function PaymentView() {
             {processing ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
             {billingType === "PIX"
               ? `Gerar Pix · ${formatMoney(finalPrice)}`
-              : `Pagar com Cartão · ${formatMoney(finalPrice)}`}
+              : billingType === "BOLETO"
+                ? `Gerar boleto · ${formatMoney(finalPrice)}`
+                : `Pagar com Cartão · ${formatMoney(finalPrice)}`}
           </Button>
         </section>
       ) : null}

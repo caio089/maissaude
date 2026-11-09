@@ -9,7 +9,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin"
 
 type RequestBody = {
   appointmentId?: string
-  billingType?: "PIX" | "CREDIT_CARD"
+  billingType?: "PIX" | "CREDIT_CARD" | "BOLETO"
 }
 
 export async function POST(request: Request) {
@@ -17,8 +17,11 @@ export async function POST(request: Request) {
     const patient = await requireCurrentPatient()
     const body = (await request.json()) as RequestBody
     const appointmentId = body.appointmentId?.trim()
-    const billingType = body.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX"
     if (!appointmentId) return NextResponse.json({ error: "Consulta inválida." }, { status: 400 })
+    if (!["PIX", "CREDIT_CARD", "BOLETO"].includes(body.billingType || "")) {
+      return NextResponse.json({ error: "Escolha Pix, cartão ou boleto." }, { status: 400 })
+    }
+    const billingType = body.billingType as "PIX" | "CREDIT_CARD" | "BOLETO"
 
     const admin = createSupabaseAdmin()
     if (!admin) return NextResponse.json({ error: "Pagamentos ainda não foram configurados." }, { status: 503 })
@@ -86,7 +89,7 @@ export async function POST(request: Request) {
       patient_id: patient.id,
       professional_id: appointment.professional_id,
       amount,
-      method: billingType === "PIX" ? "pix" : "card",
+      method: billingType === "PIX" ? "pix" : billingType === "BOLETO" ? "boleto" : "card",
       status: "pending",
       reference,
       simulated: false,
@@ -115,6 +118,8 @@ export async function POST(request: Request) {
         status: result.payment.status,
         invoiceUrl: result.payment.invoiceUrl,
         pix: result.pix ? { payload: result.pix.payload, encodedImage: result.pix.encodedImage } : null,
+        bankSlipUrl: result.bankSlipUrl || null,
+        identificationField: result.identificationField || null,
       })
     } catch (error) {
       await admin.from("payments").delete().eq("id", paymentId)

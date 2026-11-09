@@ -18,7 +18,7 @@ export async function GET() {
     db.from("professionals").select("id,name,active").eq("active", true).order("name"),
     db.from("professional_services").select("id,professional_id,name,price,duration_min,modality"),
     db.from("appointments").select("id,patient_id,professional_id,service_id,starts_at,ends_at,status,modality,notes,origin,payment_id,created_at").order("starts_at", { ascending: false }).limit(200),
-    db.from("payments").select("id,appointment_id,patient_id,professional_id,amount,method,status,reference,simulated,description,created_at,paid_at,invoice_url,pix_payload").order("created_at", { ascending: false }).limit(500),
+    db.from("payments").select("id,appointment_id,patient_id,professional_id,amount,method,status,reference,simulated,description,created_at,paid_at,invoice_url,pix_payload,bank_slip_url,identification_field").order("created_at", { ascending: false }).limit(500),
     db.from("blocked_slots").select("id,professional_id,starts_at,ends_at,reason,origin").limit(200),
   ])
   if ([patients, professionals, services, appointments, payments].some((result) => result.error)) {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   if (!db) return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
   try {
     const body = await request.json() as { patientId?: string; patient?: Patient; professionalId?: string; professional?: Professional; serviceId?: string; date?: string; time?: string; billingType?: string }
-    if (!body.patientId || !body.professionalId || !body.serviceId || !body.date || !body.time || !/^\d{4}-\d{2}-\d{2}$/.test(body.date) || !/^\d{2}:\d{2}$/.test(body.time) || !["PIX", "CREDIT_CARD"].includes(body.billingType || "")) {
+    if (!body.patientId || !body.professionalId || !body.serviceId || !body.date || !body.time || !/^\d{4}-\d{2}-\d{2}$/.test(body.date) || !/^\d{2}:\d{2}$/.test(body.time) || !["PIX", "CREDIT_CARD", "BOLETO"].includes(body.billingType || "")) {
       return NextResponse.json({ error: "Preencha paciente, profissional, procedimento, data, horário e forma de pagamento." }, { status: 422 })
     }
     const { data: foundPatient, error: patientError } = await db.from("patients").select("id,name,cpf,phone,email,status").eq("id", body.patientId).maybeSingle()
@@ -109,17 +109,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: APPOINTMENT_CONFLICT_MESSAGE }, { status: 409 })
     }
     if (appointmentError) throw new Error("Não foi possível agendar a consulta.")
-    const { error: paymentError } = await db.from("payments").insert({ id: paymentId, appointment_id: appointmentId, patient_id: patient.id, professional_id: professional.id, amount, method: body.billingType === "PIX" ? "pix" : "card", status: "pending", reference, simulated: false, description: `${service.name}${discount ? ` · desconto de associado ${discount}%` : ""}` })
+    const { error: paymentError } = await db.from("payments").insert({ id: paymentId, appointment_id: appointmentId, patient_id: patient.id, professional_id: professional.id, amount, method: body.billingType === "PIX" ? "pix" : body.billingType === "BOLETO" ? "boleto" : "card", status: "pending", reference, simulated: false, description: `${service.name}${discount ? ` · desconto de associado ${discount}%` : ""}` })
     if (paymentError) return NextResponse.json({ error: "Consulta agendada, mas não foi possível registrar a cobrança. Verifique a consulta antes de tentar novamente." }, { status: 409 })
     const { error: linkError } = await db.from("appointments").update({ payment_id: paymentId }).eq("id", appointmentId)
     if (linkError) return NextResponse.json({ error: "Consulta agendada, mas a cobrança não pôde ser vinculada. Verifique antes de tentar novamente." }, { status: 409 })
     try {
-      const result = await createAsaasCharge({ name: patient.name, cpf: patient.cpf, email: patient.email, mobilePhone: patient.phone, patientId: patient.id, paymentId, value: amount, billingType: body.billingType as "PIX" | "CREDIT_CARD", description: `Consulta: ${service.name}`, externalReference: reference })
+      const result = await createAsaasCharge({ name: patient.name, cpf: patient.cpf, email: patient.email, mobilePhone: patient.phone, patientId: patient.id, paymentId, value: amount, billingType: body.billingType as "PIX" | "CREDIT_CARD" | "BOLETO", description: `Consulta: ${service.name}`, externalReference: reference })
       const { data: linkedPayment, error: linkedError } = await db.from("payments").select("asaas_payment_id").eq("id", paymentId).maybeSingle()
       if (linkedError || linkedPayment?.asaas_payment_id !== result.payment.id) {
         return NextResponse.json({ error: "Cobrança criada no Asaas, mas não foi possível confirmar seu vínculo. Consulte o Asaas antes de tentar novamente." }, { status: 502 })
       }
-      return NextResponse.json({ appointmentId, paymentId, amount, invoiceUrl: result.payment.invoiceUrl || null, pix: result.pix ? { payload: result.pix.payload || null, encodedImage: result.pix.encodedImage || null } : null, pixUnavailable: result.pixUnavailable })
+      return NextResponse.json({ appointmentId, paymentId, amount, invoiceUrl: result.payment.invoiceUrl || null, pix: result.pix ? { payload: result.pix.payload || null, encodedImage: result.pix.encodedImage || null } : null, pixUnavailable: result.pixUnavailable, bankSlipUrl: result.bankSlipUrl || null, identificationField: result.identificationField || null })
     } catch (error) {
       console.error("Asaas charge creation failed", {
         appointmentId,
@@ -167,7 +167,7 @@ export async function PATCH(request: Request) {
 
     if (body.paymentId) {
       const now = new Date().toISOString()
-      const method = body.settleMethod === "card" ? "card" : "pix"
+      const method = body.settleMethod === "card" ? "card" : body.settleMethod === "boleto" ? "boleto" : "pix"
       const { data: updatedPayment, error: payError } = await db
         .from("payments")
         .update({ status: "paid", paid_at: now, method })

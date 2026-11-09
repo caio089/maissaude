@@ -152,7 +152,7 @@ create table public.payments (
   patient_id text not null references public.patients (id) on delete restrict,
   professional_id text not null references public.professionals (id) on delete restrict,
   amount numeric(12, 2) not null check (amount >= 0),
-  method text not null check (method in ('pix', 'card')),
+  method text not null check (method in ('pix', 'card', 'boleto')),
   status text not null check (status in ('pending', 'paid', 'refunded', 'declined')),
   reference text not null unique,
   simulated boolean not null default true,

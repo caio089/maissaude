@@ -17,7 +17,7 @@ import { PaymentAuthorizationError, requireCurrentPatient } from "@/lib/payments
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 import type { Associate, AssociateRules, CatalogKind } from "@/lib/types"
 
-type BillingType = "PIX" | "CREDIT_CARD"
+type BillingType = "PIX" | "CREDIT_CARD" | "BOLETO"
 type AssociateAnswer = "yes" | "no"
 
 type CartRequestBody = {
@@ -33,8 +33,8 @@ export async function POST(request: Request) {
     const body = (await request.json()) as CartRequestBody
     const lines = Array.isArray(body.lines) ? body.lines.slice(0, 5) : []
     if (lines.length === 0) return NextResponse.json({ error: "Inclua ao menos um atendimento." }, { status: 400 })
-    if (body.billingType !== "PIX" && body.billingType !== "CREDIT_CARD") {
-      return NextResponse.json({ error: "Escolha Pix ou cartão." }, { status: 400 })
+    if (body.billingType !== "PIX" && body.billingType !== "CREDIT_CARD" && body.billingType !== "BOLETO") {
+      return NextResponse.json({ error: "Escolha Pix, cartão ou boleto." }, { status: 400 })
     }
     if (body.associateAnswer !== "yes" && body.associateAnswer !== "no") {
       return NextResponse.json({ error: "Informe se você é associado." }, { status: 400 })
@@ -256,6 +256,8 @@ export async function POST(request: Request) {
       invoiceUrl: string | null
       pix: { payload: string | null; encodedImage: string | null } | null
       pixUnavailable: boolean
+      bankSlipUrl?: string | null
+      identificationField?: string | null
       settlementFee?: number
       consultationPrice?: number
     }> = []
@@ -304,7 +306,7 @@ export async function POST(request: Request) {
           patient_id: patient.id,
           professional_id: item.professionalId,
           amount: item.totalAmount,
-          method: body.billingType === "PIX" ? "pix" : "card",
+          method: body.billingType === "PIX" ? "pix" : body.billingType === "BOLETO" ? "boleto" : "card",
           status: "pending",
           reference,
           simulated: false,
@@ -340,6 +342,8 @@ export async function POST(request: Request) {
           status: result.payment.status,
           invoiceUrl: result.payment.invoiceUrl || null,
           pix: result.pix ? { payload: result.pix.payload || null, encodedImage: result.pix.encodedImage || null } : null,
+          bankSlipUrl: result.bankSlipUrl || null,
+          identificationField: result.identificationField || null,
           pixUnavailable: result.pixUnavailable,
           ...(item.settlementFee > 0 ? { settlementFee: item.settlementFee, consultationPrice: item.price } : {}),
         })

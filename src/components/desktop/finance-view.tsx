@@ -410,7 +410,7 @@ function ReceiptDialog({ payment, patients, onOpenChange }: { payment: Payment |
             <Row term="Paciente" value={patient?.name ?? "—"} />
             <Row term="Profissional" value={professional?.name ?? "—"} />
             <Row term="Valor" value={formatMoney(payment.amount)} />
-            <Row term="Forma" value={payment.method === "pix" ? "Pix" : "Cartão"} />
+            <Row term="Forma" value={payment.method === "pix" ? "Pix" : payment.method === "boleto" ? "Boleto" : "Cartão"} />
             <Row term="Situação" value={payment.status} />
             <Row term="Data" value={formatDate(payment.paidAt ?? payment.createdAt, "dd/MM/yyyy HH:mm")} />
           </dl>

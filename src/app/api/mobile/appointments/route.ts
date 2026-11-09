@@ -26,7 +26,7 @@ export async function GET() {
     db
       .from("payments")
       .select(
-        "id,appointment_id,patient_id,professional_id,amount,method,status,created_at,paid_at,reference,simulated,description,invoice_url,pix_payload",
+        "id,appointment_id,patient_id,professional_id,amount,method,status,created_at,paid_at,reference,simulated,description,invoice_url,pix_payload,bank_slip_url,identification_field",
       )
       .eq("patient_id", patient.id)
       .order("created_at", { ascending: false }),
@@ -51,7 +51,7 @@ export async function GET() {
     paymentId: row.payment_id || undefined,
   }))
 
-  const payments: (Payment & { invoiceUrl?: string; pixPayload?: string })[] = (paymentsResult.data || []).map((row: any) => ({
+  const payments: (Payment & { invoiceUrl?: string; pixPayload?: string; bankSlipUrl?: string | null; identificationField?: string | null })[] = (paymentsResult.data || []).map((row) => ({
     id: row.id,
     appointmentId: row.appointment_id || null,
     patientId: row.patient_id,
@@ -66,6 +66,8 @@ export async function GET() {
     description: row.description || "Consulta",
     invoiceUrl: row.invoice_url || undefined,
     pixPayload: row.pix_payload || undefined,
+    bankSlipUrl: row.bank_slip_url || null,
+    identificationField: row.identification_field || null,
   }))
 
   return NextResponse.json({ appointments, payments })

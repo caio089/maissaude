@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import { ArrowLeft, BadgeCheck, CreditCard, Eye, EyeOff, Loader2, QrCode } from "lucide-react"
+import { ArrowLeft, BadgeCheck, Banknote, CreditCard, Eye, EyeOff, Loader2, QrCode } from "lucide-react"
 import { toast } from "sonner"
 import { AppointmentConfirmation } from "@/components/mobile/appointment-confirmation"
 import { AssociatePitch } from "@/components/mobile/associate-subscription"
@@ -23,7 +23,7 @@ import { useDemoStore } from "@/lib/store"
 import type { CartLine } from "@/lib/types"
 
 type Stage = "catalog" | "confirm" | "pay"
-type BillingType = "PIX" | "CREDIT_CARD"
+type BillingType = "PIX" | "CREDIT_CARD" | "BOLETO"
 type AssociateAnswer = "yes" | "no"
 type PaymentQuote = {
   associate: { active: boolean; discountPercent: number; fee: number }
@@ -38,6 +38,8 @@ type ChargeResult = {
   invoiceUrl: string | null
   pix: { payload: string | null; encodedImage: string | null } | null
   pixUnavailable?: boolean
+  bankSlipUrl: string | null
+  identificationField: string | null
 }
 
 export function MobileJourney() {
@@ -418,15 +420,20 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
               <span className="grid size-11 place-items-center rounded-xl bg-[#e9eef8] text-[#365f8b]"><CreditCard className="size-5" /></span>
               <span><span className="block font-medium">Cartão</span><span className="block text-xs text-muted-foreground">Dados preenchidos na página protegida da Asaas</span></span>
             </button>
+            <button type="button" data-testid="payment-method-boleto" aria-pressed={billingType === "BOLETO"} onClick={() => setBillingType("BOLETO")} className={`flex items-center gap-3 rounded-2xl p-3 text-left ring-1 ${billingType === "BOLETO" ? "bg-amber-50 ring-amber-500" : "bg-white ring-border"}`}>
+              <span className="grid size-11 place-items-center rounded-xl bg-amber-100 text-amber-700"><Banknote className="size-5" /></span>
+              <span><span className="block font-medium">Boleto</span><span className="block text-xs text-muted-foreground">Linha digitável e compensação em até 3 dias úteis</span></span>
+            </button>
           </div>
           {billingType && belowPaymentMinimum ? <p role="alert" className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{minimumAsaasChargeMessage(billingType)} Ajuste o valor no painel da clínica.</p> : null}
+          {billingType === "BOLETO" ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">O boleto pode levar até 3 dias úteis para compensar. A consulta continuará pendente até a confirmação.</p> : null}
           <div className="mt-4 flex gap-2">
             <Button type="button" variant="outline" className="h-12 flex-1" onClick={onBack}>
               Voltar
             </Button>
             <Button type="button" className="h-12 flex-1" disabled={processing || !billingType || !quote || cart.length === 0 || belowPaymentMinimum} onClick={() => void pay()}>
               {processing ? <Loader2 className="animate-spin" /> : null}
-              {billingType === "PIX" ? "Gerar Pix" : billingType === "CREDIT_CARD" ? "Pagar com cartão" : "Escolha o pagamento"}
+              {billingType === "PIX" ? "Gerar Pix" : billingType === "CREDIT_CARD" ? "Pagar com cartão" : billingType === "BOLETO" ? "Gerar boleto" : "Escolha o pagamento"}
             </Button>
           </div>
         </section>
@@ -436,11 +443,17 @@ function PaymentStep({ cart, onBack }: { cart: CartLine[]; onBack: () => void })
         <div className="mt-4 space-y-4">
           {charges.map((charge, index) => (
             <section key={index} className="surface-card p-4">
-              <p className="font-medium">{charge.billingType === "PIX" ? "Pix" : "Cartão"} {charges.length > 1 ? `${index + 1} de ${charges.length}` : ""} · {formatMoney(charge.value)}</p>
+              <p className="font-medium">{charge.billingType === "PIX" ? "Pix" : charge.billingType === "BOLETO" ? "Boleto" : "Cartão"} {charges.length > 1 ? `${index + 1} de ${charges.length}` : ""} · {formatMoney(charge.value)}</p>
               {charge.pix?.encodedImage ? <img className="mx-auto mt-3 size-52" src={`data:image/png;base64,${charge.pix.encodedImage}`} alt="QR Code Pix" /> : null}
               {charge.pix?.payload ? <Button type="button" variant="outline" className="mt-3 w-full" onClick={() => void navigator.clipboard.writeText(charge.pix?.payload || "").then(() => toast.success("Código Pix copiado."))}>Copiar código Pix</Button> : null}
               {charge.pixUnavailable ? <p className="mt-3 rounded-xl bg-muted p-3 text-sm">O QR Code não carregou agora. Use o link da cobrança abaixo.</p> : null}
-              {charge.invoiceUrl ? <Button asChild className="mt-3 w-full"><a href={charge.invoiceUrl} target="_blank" rel="noreferrer">{charge.billingType === "CREDIT_CARD" ? "Pagar com cartão na Asaas" : "Abrir cobrança"}</a></Button> : null}
+              {charge.billingType === "BOLETO" ? (
+                <>
+                  {charge.identificationField ? <div className="mt-3 space-y-2"><Input readOnly value={charge.identificationField} aria-label="Linha digitável do boleto" className="font-mono text-xs" /><Button type="button" variant="outline" className="w-full" onClick={() => void navigator.clipboard.writeText(charge.identificationField || "").then(() => toast.success("Linha digitável copiada."))}>Copiar linha digitável</Button></div> : null}
+                  <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">O boleto pode levar até 3 dias úteis para compensar. A consulta continuará pendente até a confirmação.</p>
+                </>
+              ) : null}
+              {charge.invoiceUrl ? <Button asChild className="mt-3 w-full"><a href={charge.invoiceUrl} target="_blank" rel="noreferrer">{charge.billingType === "CREDIT_CARD" ? "Pagar com cartão na Asaas" : charge.billingType === "BOLETO" ? "Abrir boleto na Asaas" : "Abrir cobrança"}</a></Button> : null}
             </section>
           ))}
           <p className="text-center text-sm text-muted-foreground">Após o pagamento, a Asaas confirma automaticamente a cobrança.</p>

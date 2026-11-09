@@ -22,7 +22,7 @@ export function MobileAppointments() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [cancelId, setCancelId] = useState<string | null>(null)
   const [serverAppointments, setServerAppointments] = useState<Appointment[]>([])
-  const [serverPayments, setServerPayments] = useState<(Payment & { invoiceUrl?: string; pixPayload?: string })[]>([])
+  const [serverPayments, setServerPayments] = useState<(Payment & { invoiceUrl?: string; pixPayload?: string; bankSlipUrl?: string | null; identificationField?: string | null })[]>([])
   const sessionPatientId = useDemoStore((state) => state.mobileSessionPatientId)
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export function MobileAppointments() {
         if (!response.ok) return
         const body = (await response.json()) as {
           appointments?: Appointment[]
-          payments?: (Payment & { invoiceUrl?: string; pixPayload?: string })[]
+          payments?: (Payment & { invoiceUrl?: string; pixPayload?: string; bankSlipUrl?: string | null; identificationField?: string | null })[]
         }
         if (active && Array.isArray(body.appointments)) {
           setServerAppointments(body.appointments)
@@ -40,7 +40,6 @@ export function MobileAppointments() {
         }
       })
       .catch(() => {
-        // Fallback limpo: mantém os dados locais do useDemoStore
       })
     return () => {
       active = false
@@ -173,7 +172,7 @@ function List({
 }: {
   items: Appointment[]
   empty: string
-  serverPayments: (Payment & { invoiceUrl?: string; pixPayload?: string })[]
+  serverPayments: (Payment & { invoiceUrl?: string; pixPayload?: string; bankSlipUrl?: string | null; identificationField?: string | null })[]
   onOpen: (id: string) => void
 }) {
   const data = useDemoStore((state) => state.data)
@@ -187,7 +186,7 @@ function List({
         .map((item) => {
           const professional = data.professionals.find((person) => person.id === item.professionalId)
           const service = professional?.services.find((entry) => entry.id === item.serviceId)
-          const payment =
+          const payment: Payment & { bankSlipUrl?: string | null; identificationField?: string | null } | undefined =
             serverPayments.find(
               (p) => (p.appointmentId && p.appointmentId === item.id) || p.id === item.paymentId,
             ) ??
@@ -246,14 +245,14 @@ function Details({
   onCancel,
 }: {
   appointment: Appointment
-  serverPayments: (Payment & { invoiceUrl?: string; pixPayload?: string })[]
+  serverPayments: (Payment & { invoiceUrl?: string; pixPayload?: string; bankSlipUrl?: string | null; identificationField?: string | null })[]
   onReschedule: () => void
   onCancel: () => void
 }) {
   const data = useDemoStore((state) => state.data)
   const professional = data.professionals.find((item) => item.id === appointment.professionalId)
   const service = professional?.services.find((entry) => entry.id === appointment.serviceId)
-  const payment =
+  const payment: Payment & { bankSlipUrl?: string | null; identificationField?: string | null } | undefined =
     serverPayments.find(
       (item) => (item.appointmentId && item.appointmentId === appointment.id) || item.id === appointment.paymentId,
     ) ??
@@ -308,8 +307,11 @@ function Details({
             <div className="mt-2 space-y-1">
               <p className="text-lg font-bold text-foreground">{formatMoney(payment.amount)}</p>
               <p className="text-xs text-muted-foreground">
-                Ref: {payment.reference} · {payment.method === "pix" ? "Pix" : "Cartão"}
+                Ref: {payment.reference} · {payment.method === "pix" ? "Pix" : payment.method === "boleto" ? "Boleto" : "Cartão"}
               </p>
+              {payment.method === "boleto" && payment.identificationField ? (
+                <p className="break-all font-mono text-[11px] text-muted-foreground">{payment.identificationField}</p>
+              ) : null}
               {payment.paidAt ? (
                 <p className="text-xs text-emerald-700">
                   Pago em {formatDate(payment.paidAt, "dd/MM/yyyy 'às' HH:mm")}
@@ -321,12 +323,20 @@ function Details({
           )}
         </div>
 
-        {isPending && payment?.invoiceUrl ? (
+        {isPending && (payment?.invoiceUrl || payment?.bankSlipUrl) ? (
           <Button asChild className="w-full h-11 bg-teal text-white hover:bg-teal/90">
-            <a href={payment.invoiceUrl} target="_blank" rel="noreferrer">
-              Pagar agora no Asaas (Pix ou Cartão)
+            <a href={payment.bankSlipUrl || payment.invoiceUrl} target="_blank" rel="noreferrer">
+              Pagar agora no Asaas
             </a>
           </Button>
+        ) : null}
+
+        {payment?.method === "boleto" && isPending && payment?.identificationField ? (
+          <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+            <p className="font-medium">Linha digitável</p>
+            <p className="mt-1 break-all font-mono">{payment.identificationField}</p>
+            <p className="mt-2">O boleto pode levar até 3 dias úteis para compensar. A consulta continua pendente até a confirmação.</p>
+          </div>
         ) : null}
 
         {appointment.notes ? (

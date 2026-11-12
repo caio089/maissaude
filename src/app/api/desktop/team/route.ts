@@ -265,3 +265,71 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json({ ok: true, member })
 }
+
+export async function DELETE(request: Request) {
+  const auth = await verifyAdminAuth()
+  if (auth.errorResponse) return auth.errorResponse
+  const { db } = auth
+
+  const { searchParams } = new URL(request.url)
+  let id = searchParams.get("id")?.trim()
+
+  if (!id) {
+    try {
+      const body = await request.json()
+      id = body?.id?.trim()
+    } catch {}
+  }
+
+  if (!id) {
+    return NextResponse.json(
+      { error: "ID do membro da equipe é obrigatório." },
+      { status: 400 }
+    )
+  }
+
+  const { data: member, error: findError } = await db
+    .from("clinic_team")
+    .select("id, auth_user_id, email, name, role")
+    .eq("id", id)
+    .maybeSingle()
+
+  if (findError || !member) {
+    return NextResponse.json(
+      { error: "Membro da equipe não encontrado." },
+      { status: 404 }
+    )
+  }
+
+  if (auth.session.email && member.email.toLowerCase() === auth.session.email.toLowerCase()) {
+    return NextResponse.json(
+      { error: "Você não pode excluir seu próprio usuário de administrador." },
+      { status: 400 }
+    )
+  }
+
+  if (member.email.toLowerCase() === "cuidarsaude2026@gmail.com") {
+    return NextResponse.json(
+      { error: "A conta principal da clínica não pode ser excluída." },
+      { status: 400 }
+    )
+  }
+
+  const { error: deleteError } = await db
+    .from("clinic_team")
+    .delete()
+    .eq("id", id)
+
+  if (deleteError) {
+    return NextResponse.json(
+      { error: deleteError.message || "Não foi possível excluir o membro da equipe." },
+      { status: 500 }
+    )
+  }
+
+  if (member.auth_user_id && db.auth?.admin?.deleteUser) {
+    await db.auth.admin.deleteUser(member.auth_user_id).catch(() => {})
+  }
+
+  return NextResponse.json({ ok: true, id, message: "Membro da equipe excluído com sucesso." })
+}

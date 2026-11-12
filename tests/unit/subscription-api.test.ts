@@ -7,6 +7,7 @@ import * as currentPatientModule from "@/lib/payments/current-patient"
 import * as supabaseAdminModule from "@/lib/supabase/admin"
 import * as chargesModule from "@/lib/asaas/charges"
 import * as paymentLinksModule from "@/lib/asaas/payment-links"
+import * as subscriptionsModule from "@/lib/asaas/subscriptions"
 import * as originModule from "@/lib/auth/origin"
 import { GET, POST } from "@/app/api/payments/subscription/route"
 
@@ -506,5 +507,107 @@ describe("POST /api/payments/subscription", () => {
       value: 35,
       successUrl: "https://cuidarsaude.app/mobile/perfil",
     })
+  })
+
+  it("realiza checkout transparente no cartão de crédito diretamente pelo site/app", async () => {
+    let capturedAssociateUpdate: any = null
+    const mockAdmin = createMockAdmin({
+      associate: null,
+    })
+    const originalFrom = mockAdmin.from
+    mockAdmin.from = vi.fn((table: string) => {
+      if (table === "associates") {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+              }),
+            }),
+          }),
+          upsert: vi.fn().mockResolvedValue({ error: null }),
+          update: vi.fn((payload) => {
+            capturedAssociateUpdate = payload
+            return {
+              eq: vi.fn().mockResolvedValue({ error: null }),
+            }
+          }),
+        }
+      }
+      return originalFrom(table)
+    })
+    vi.spyOn(supabaseAdminModule, "createSupabaseAdmin").mockReturnValue(mockAdmin as any)
+    const createSubSpy = vi.spyOn(subscriptionsModule, "createAsaasSubscription").mockResolvedValue({
+      customer: { id: "cus_123" },
+      subscription: { id: "sub_123", status: "ACTIVE" } as any,
+      payment: { id: "pay_123" } as any,
+      pix: null,
+    })
+    const createLinkSpy = vi.spyOn(paymentLinksModule, "createAssociateCardPaymentLink")
+
+    const req = new Request("http://localhost/api/payments/subscription", {
+      method: "POST",
+      body: JSON.stringify({
+        billingType: "CREDIT_CARD",
+        creditCard: {
+          holderName: "CARLOS SOUZA",
+          number: "4111111111111111",
+          expiryMonth: "12",
+          expiryYear: "28",
+          ccv: "123",
+        },
+        creditCardHolderInfo: {
+          postalCode: "64000000",
+          addressNumber: "100",
+        },
+      }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    expect(body.status).toBe("active")
+    expect(body.subscriptionId).toBe("sub_123")
+    expect(body.paymentUrl).toBeUndefined()
+    expect(createLinkSpy).not.toHaveBeenCalled()
+    expect(createSubSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        billingType: "CREDIT_CARD",
+        creditCard: expect.objectContaining({
+          holderName: "CARLOS SOUZA",
+          number: "4111111111111111",
+          expiryMonth: "12",
+          expiryYear: "2028",
+          ccv: "123",
+        }),
+      }),
+    )
+    expect(capturedAssociateUpdate).toMatchObject({
+      status: "active",
+      overdue_months: 0,
+    })
+  })
+
+  it("retorna 422 se dados do cartão forem inválidos no checkout transparente", async () => {
+    const mockAdmin = createMockAdmin({ associate: null })
+    vi.spyOn(supabaseAdminModule, "createSupabaseAdmin").mockReturnValue(mockAdmin as any)
+
+    const req = new Request("http://localhost/api/payments/subscription", {
+      method: "POST",
+      body: JSON.stringify({
+        billingType: "CREDIT_CARD",
+        creditCard: {
+          holderName: "AB", // curto
+          number: "123", // inválido
+          expiryMonth: "15",
+          expiryYear: "20",
+          ccv: "9",
+        },
+      }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(422)
+    const body = await res.json()
+    expect(body.error).toBeDefined()
   })
 })

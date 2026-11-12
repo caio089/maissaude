@@ -112,6 +112,14 @@ export interface Appointment {
   createdAt: string
   origin: AppointmentOrigin
   paymentId?: string
+  clinicId?: string | null
+  clinicName?: string | null
+  clinicAddress?: string | null
+  clinicPhone?: string | null
+  professionalName?: string | null
+  serviceName?: string | null
+  kind?: string | null
+  price?: number
 }
 
 export interface Payment {
@@ -171,12 +179,36 @@ export interface BlockedSlot {
 }
 
 export interface ClinicProfile {
+  id?: string
   name: string
   legalName: string
   city: string
   address: string
   phone: string
   email: string
+  active?: boolean
+  createdAt?: string
+}
+
+export interface PartnerClinic {
+  id: string
+  name: string
+  legalName?: string
+  city: string
+  address: string
+  phone: string
+  email?: string
+  active?: boolean
+  createdAt?: string
+}
+
+export const DEFAULT_CLINIC_PROFILE: ClinicProfile = {
+  name: "CuidarSaude",
+  legalName: "CuidarSaude Centro Médico Ltda",
+  city: "Teresina - PI",
+  address: "Rua Félix Pacheco, 2159 - Centro",
+  phone: "(86) 3000-0000",
+  email: "cuidarsaude2026@gmail.com",
 }
 
 export interface BookingDraft {
@@ -202,6 +234,8 @@ export interface CatalogOffer {
   professionalId: string | null
   price: number
   durationMin: number
+  clinicId?: string | null
+  clinicName?: string | null
 }
 
 export interface CartLine {

@@ -12,6 +12,7 @@ import {
   UserCheck,
   UserX,
   Users,
+  Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { EmptyState } from "@/components/shared/empty-state"
@@ -80,6 +81,10 @@ export function TeamView({ initialSession }: TeamViewProps = {}) {
 
   // Status toggle
   const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  // Deletar membro
+  const [deletingMember, setDeletingMember] = useState<ClinicTeamMember | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   async function loadTeam() {
     setLoading(true)
@@ -207,6 +212,27 @@ export function TeamView({ initialSession }: TeamViewProps = {}) {
       toast.error(err instanceof Error ? err.message : "Erro ao alterar status.")
     } finally {
       setTogglingId(null)
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deletingMember) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/desktop/team?id=${encodeURIComponent(deletingMember.id)}`, {
+        method: "DELETE",
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error || "Não foi possível excluir o membro.")
+      }
+      setMembers((prev) => prev.filter((m) => m.id !== deletingMember.id))
+      toast.success(`Membro ${deletingMember.name} excluído com sucesso.`)
+      setDeletingMember(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao excluir membro.")
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -403,27 +429,46 @@ export function TeamView({ initialSession }: TeamViewProps = {}) {
                       {formatDate(member.createdAt, "dd/MM/yyyy HH:mm")}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={isToggling}
-                        onClick={() => handleToggleStatus(member)}
-                        className={
-                          member.status === "active"
-                            ? "text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700"
-                        }
-                      >
-                        {isToggling ? (
-                          <Loader2 className="size-3.5 animate-spin mr-1" />
-                        ) : member.status === "active" ? (
-                          <UserX className="size-3.5 mr-1" />
-                        ) : (
-                          <UserCheck className="size-3.5 mr-1" />
-                        )}
-                        {member.status === "active" ? "Desativar" : "Ativar"}
-                      </Button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isToggling}
+                          onClick={() => handleToggleStatus(member)}
+                          className={
+                            member.status === "active"
+                              ? "text-destructive hover:bg-destructive/10 hover:text-destructive h-8 text-xs"
+                              : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 h-8 text-xs"
+                          }
+                        >
+                          {isToggling ? (
+                            <Loader2 className="size-3.5 animate-spin mr-1" />
+                          ) : member.status === "active" ? (
+                            <UserX className="size-3.5 mr-1" />
+                          ) : (
+                            <UserCheck className="size-3.5 mr-1" />
+                          )}
+                          {member.status === "active" ? "Desativar" : "Ativar"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={
+                            isToggling ||
+                            (Boolean(session?.email) &&
+                              member.email.toLowerCase() === session?.email?.toLowerCase()) ||
+                            member.email.toLowerCase() === "cuidarsaude2026@gmail.com"
+                          }
+                          onClick={() => setDeletingMember(member)}
+                          className="h-8 w-8 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          title="Excluir membro da equipe"
+                          aria-label={`Excluir ${member.name}`}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )
@@ -544,6 +589,51 @@ export function TeamView({ initialSession }: TeamViewProps = {}) {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Confirmação de Exclusão */}
+      <Dialog
+        open={Boolean(deletingMember)}
+        onOpenChange={(open) => {
+          if (!deleting && !open) setDeletingMember(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="size-5 text-destructive" />
+              Excluir membro da equipe
+            </DialogTitle>
+            <DialogDescription className="pt-2 text-sm leading-relaxed">
+              Tem certeza que deseja excluir <strong>{deletingMember?.name}</strong> ({deletingMember?.email})?
+              Essa ação é definitiva e removerá o acesso desta conta ao painel da clínica.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0 pt-3">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deleting}
+              onClick={() => setDeletingMember(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => void confirmDelete()}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="size-4 animate-spin mr-1.5" /> Excluindo...
+                </>
+              ) : (
+                "Excluir membro"
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </FadeIn>

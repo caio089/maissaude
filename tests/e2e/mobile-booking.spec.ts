@@ -229,7 +229,7 @@ test.describe("novo fluxo de agendamento mobile", () => {
     await expect(page.getByRole("heading", { name: "Veja tudo antes de assinar" })).toBeVisible()
     await expect(page.getByText("20% de desconto nas consultas pelo aplicativo")).toBeVisible()
     await expect(page.getByText("4 passagens de transporte no mês")).toBeVisible()
-    await expect(page.getByText("A mensalidade não aceita Pix.")).toBeVisible()
+    await expect(page.getByText("Veja todos os benefícios e assine diretamente pelo aplicativo")).toBeVisible()
     await page.getByRole("button", { name: "Continuar para o cartão" }).click()
 
     await expect(page.getByRole("heading", { name: "Página segura pronta" })).toBeVisible()

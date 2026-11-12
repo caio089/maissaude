@@ -5,7 +5,7 @@ vi.mock("server-only", () => ({}))
 import { resolveClinicRole } from "@/lib/clinic-session"
 import * as clinicSessionModule from "@/lib/clinic-session"
 import * as supabaseAdminModule from "@/lib/supabase/admin"
-import { GET, POST, PATCH } from "@/app/api/desktop/team/route"
+import { GET, POST, PATCH, DELETE } from "@/app/api/desktop/team/route"
 
 describe("desktop team authorization", () => {
   it("apenas papel admin pode gerenciar equipe", () => {
@@ -660,5 +660,153 @@ describe("PATCH /api/desktop/team", () => {
     expect(response.status).toBe(400)
     const json = await response.json()
     expect(json.error).toBe("Você não pode desativar seu próprio acesso de administrador.")
+  })
+})
+
+describe("DELETE /api/desktop/team", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("retorna 401 se a clínica não estiver autenticada", async () => {
+    vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+      authenticated: false,
+      role: "admin",
+      email: "",
+      name: "",
+    })
+
+    const request = new Request("http://localhost/api/desktop/team?id=member-1", { method: "DELETE" })
+    const response = await DELETE(request)
+    expect(response.status).toBe(401)
+  })
+
+  it("retorna 403 se o usuário não for administrador", async () => {
+    vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+      authenticated: true,
+      role: "attendant",
+      email: "atendente@exemplo.com",
+      name: "Atendente",
+    })
+
+    const request = new Request("http://localhost/api/desktop/team?id=member-1", { method: "DELETE" })
+    const response = await DELETE(request)
+    expect(response.status).toBe(403)
+  })
+
+  it("retorna 400 se o ID for omitido", async () => {
+    vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+      authenticated: true,
+      role: "admin",
+      email: "admin@exemplo.com",
+      name: "Admin",
+    })
+    vi.spyOn(supabaseAdminModule, "createSupabaseAdmin").mockReturnValue({} as any)
+
+    const request = new Request("http://localhost/api/desktop/team", { method: "DELETE" })
+    const response = await DELETE(request)
+    expect(response.status).toBe(400)
+  })
+
+  it("impede que o administrador exclua o próprio usuário", async () => {
+    vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+      authenticated: true,
+      role: "admin",
+      email: "admin@exemplo.com",
+      name: "Admin",
+    })
+
+    const mockSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: { id: "admin-id", email: "admin@exemplo.com", name: "Admin", auth_user_id: "auth-1" },
+          error: null,
+        }),
+      }),
+    })
+
+    vi.spyOn(supabaseAdminModule, "createSupabaseAdmin").mockReturnValue({
+      from: vi.fn().mockReturnValue({ select: mockSelect }),
+    } as any)
+
+    const request = new Request("http://localhost/api/desktop/team?id=admin-id", { method: "DELETE" })
+    const response = await DELETE(request)
+    expect(response.status).toBe(400)
+    const json = await response.json()
+    expect(json.error).toBe("Você não pode excluir seu próprio usuário de administrador.")
+  })
+
+  it("impede exclusão da conta principal cuidarsaude2026@gmail.com", async () => {
+    vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+      authenticated: true,
+      role: "admin",
+      email: "outro_admin@exemplo.com",
+      name: "Outro Admin",
+    })
+
+    const mockSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: { id: "principal-id", email: "cuidarsaude2026@gmail.com", name: "Principal", auth_user_id: "auth-p" },
+          error: null,
+        }),
+      }),
+    })
+
+    vi.spyOn(supabaseAdminModule, "createSupabaseAdmin").mockReturnValue({
+      from: vi.fn().mockReturnValue({ select: mockSelect }),
+    } as any)
+
+    const request = new Request("http://localhost/api/desktop/team?id=principal-id", { method: "DELETE" })
+    const response = await DELETE(request)
+    expect(response.status).toBe(400)
+    const json = await response.json()
+    expect(json.error).toBe("A conta principal da clínica não pode ser excluída.")
+  })
+
+  it("exclui membro da equipe e usuário correspondente no Auth", async () => {
+    vi.spyOn(clinicSessionModule, "getClinicSession").mockResolvedValue({
+      authenticated: true,
+      role: "admin",
+      email: "admin@exemplo.com",
+      name: "Admin",
+    })
+
+    const deleteUserMock = vi.fn().mockResolvedValue({ error: null })
+    const mockDelete = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    })
+    const mockSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: { id: "member-to-del", email: "atendente@exemplo.com", name: "Atendente", auth_user_id: "auth-123" },
+          error: null,
+        }),
+      }),
+    })
+
+    vi.spyOn(supabaseAdminModule, "createSupabaseAdmin").mockReturnValue({
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === "clinic_team") {
+          return {
+            select: mockSelect,
+            delete: mockDelete,
+          }
+        }
+        return {}
+      }),
+      auth: {
+        admin: {
+          deleteUser: deleteUserMock,
+        },
+      },
+    } as any)
+
+    const request = new Request("http://localhost/api/desktop/team?id=member-to-del", { method: "DELETE" })
+    const response = await DELETE(request)
+    expect(response.status).toBe(200)
+    const json = await response.json()
+    expect(json.ok).toBe(true)
+    expect(deleteUserMock).toHaveBeenCalledWith("auth-123")
   })
 })

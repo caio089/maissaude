@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { createAsaasCharge } from "@/lib/asaas/charges"
 import { createAssociateCardPaymentLink } from "@/lib/asaas/payment-links"
+import { createAsaasSubscription } from "@/lib/asaas/subscriptions"
 import { cpfDigits, formatCpf, isValidCpf } from "@/lib/cpf"
 import { createId } from "@/lib/format"
 import { hasClinicSession } from "@/lib/clinic-session"
@@ -18,6 +19,23 @@ type RequestBody = {
   patient?: Patient
   billingType?: "PIX" | "BOLETO" | "CREDIT_CARD"
   monthsToPay?: number
+  creditCard?: {
+    holderName?: string
+    number?: string
+    expiryMonth?: string
+    expiryYear?: string
+    ccv?: string
+  }
+  creditCardHolderInfo?: {
+    name?: string
+    email?: string
+    cpfCnpj?: string
+    postalCode?: string
+    addressNumber?: string
+    addressComplement?: string
+    phone?: string
+    mobilePhone?: string
+  }
 }
 
 export async function GET() {
@@ -144,6 +162,129 @@ export async function POST(request: Request) {
     if (associateError) return NextResponse.json({ error: associateError.message }, { status: 422 })
 
     if (billingType === "CREDIT_CARD") {
+      if (body.creditCard?.number) {
+        const cardNumber = body.creditCard.number.replace(/\D/g, "")
+        const holderName = body.creditCard.holderName?.trim() || ""
+        const expiryMonth = body.creditCard.expiryMonth?.trim() || ""
+        const expiryYear = body.creditCard.expiryYear?.trim() || ""
+        const ccv = body.creditCard.ccv?.trim() || ""
+        const postalCode = (body.creditCardHolderInfo?.postalCode || "").replace(/\D/g, "")
+        const addressNumber = body.creditCardHolderInfo?.addressNumber?.trim() || "S/N"
+
+        if (cardNumber.length < 13 || cardNumber.length > 19) {
+          return NextResponse.json({ error: "Número do cartão inválido." }, { status: 422 })
+        }
+        if (holderName.length < 3) {
+          return NextResponse.json({ error: "Nome impresso no cartão inválido." }, { status: 422 })
+        }
+        if (!/^(0?[1-9]|1[0-2])$/.test(expiryMonth)) {
+          return NextResponse.json({ error: "Mês de vencimento inválido." }, { status: 422 })
+        }
+        if (!/^\d{2,4}$/.test(expiryYear)) {
+          return NextResponse.json({ error: "Ano de vencimento inválido." }, { status: 422 })
+        }
+        if (!/^\d{3,4}$/.test(ccv)) {
+          return NextResponse.json({ error: "Código de segurança (CVV) inválido." }, { status: 422 })
+        }
+        if (postalCode.length !== 8) {
+          return NextResponse.json({ error: "CEP do titular é obrigatório (8 dígitos)." }, { status: 422 })
+        }
+
+        const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+        const remoteIp = forwarded || request.headers.get("x-real-ip") || "127.0.0.1"
+
+        const months =
+          typeof body.monthsToPay === "number" && body.monthsToPay > 0
+            ? Math.max(1, Math.floor(body.monthsToPay))
+            : (existing?.overdue_months && existing.overdue_months > 0 ? existing.overdue_months : 1)
+        const chargeValue = fee * months
+
+        let paymentId: string | undefined
+        let subscriptionId: string | undefined
+
+        if (months > 1) {
+          const charge = await createAsaasCharge({
+            patientId,
+            name,
+            cpf,
+            email,
+            mobilePhone: phone,
+            value: chargeValue,
+            billingType: "CREDIT_CARD",
+            description: `Mensalidade de associado CuidarSaude (${months} meses)`,
+            externalReference: `associate:${associateId}`,
+            creditCard: {
+              holderName: holderName.toUpperCase(),
+              number: cardNumber,
+              expiryMonth: expiryMonth.padStart(2, "0"),
+              expiryYear: expiryYear.length === 2 ? `20${expiryYear}` : expiryYear,
+              ccv,
+            },
+            creditCardHolderInfo: {
+              name: body.creditCardHolderInfo?.name?.trim() || name,
+              email: body.creditCardHolderInfo?.email?.trim().toLowerCase() || email,
+              cpfCnpj: cpfDigits(body.creditCardHolderInfo?.cpfCnpj || cpf),
+              postalCode,
+              addressNumber,
+              addressComplement: body.creditCardHolderInfo?.addressComplement?.trim() || undefined,
+              phone,
+              mobilePhone: phone,
+            },
+            remoteIp,
+          })
+          paymentId = charge.payment?.id
+        } else {
+          const { subscription, payment } = await createAsaasSubscription({
+            patientId,
+            associateId,
+            name,
+            cpf,
+            email,
+            mobilePhone: phone,
+            value: fee,
+            billingType: "CREDIT_CARD",
+            description: "Mensalidade de associado CuidarSaude",
+            creditCard: {
+              holderName: holderName.toUpperCase(),
+              number: cardNumber,
+              expiryMonth: expiryMonth.padStart(2, "0"),
+              expiryYear: expiryYear.length === 2 ? `20${expiryYear}` : expiryYear,
+              ccv,
+            },
+            creditCardHolderInfo: {
+              name: body.creditCardHolderInfo?.name?.trim() || name,
+              email: body.creditCardHolderInfo?.email?.trim().toLowerCase() || email,
+              cpfCnpj: cpfDigits(body.creditCardHolderInfo?.cpfCnpj || cpf),
+              postalCode,
+              addressNumber,
+              addressComplement: body.creditCardHolderInfo?.addressComplement?.trim() || undefined,
+              phone,
+              mobilePhone: phone,
+            },
+            remoteIp,
+          })
+          subscriptionId = subscription.id
+          paymentId = payment?.id
+        }
+
+        await admin.from("associates").update({
+          status: "active",
+          overdue_months: 0,
+          last_paid_at: new Date().toISOString(),
+        }).eq("id", associateId)
+
+        return NextResponse.json({
+          ok: true,
+          associateId,
+          value: chargeValue,
+          billingType: "CREDIT_CARD",
+          status: "active",
+          subscriptionId,
+          paymentId,
+          message: "Pagamento com cartão aprovado! Associado ativo.",
+        })
+      }
+
       const paymentLink = await createAssociateCardPaymentLink({ associateId, name, value: fee })
       return NextResponse.json({
         associateId,

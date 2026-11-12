@@ -5,7 +5,9 @@ import { Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { formatDate } from "@/lib/format"
+import { formatCpf } from "@/lib/cpf"
 import { GuideExportDialog, type GuideDialogItem } from "@/components/desktop/guide-export-dialog"
+import { guideCredentials } from "@/lib/authorization-guide"
 
 type Patient = { id: string; name: string; cpf: string; birthDate?: string }
 type Guide = GuideDialogItem
@@ -92,28 +94,80 @@ export function GuidesView() {
     <section className="space-y-3 rounded-2xl border bg-card p-5">
       <h2 className="text-lg font-semibold">{selected ? `Guias de ${selected.name}` : "Guias"}</h2>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {loading ? <p className="text-sm text-muted-foreground">Carregando...</p> : !error && guides.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma guia encontrada.</p> : guides.map((guide) => <article key={guide.id} className="space-y-2 rounded-lg border p-4 text-sm">
-        <div className="flex flex-wrap justify-between gap-2"><p className="font-semibold">{guide.patient?.name || "Paciente indisponível"} · {guide.service}</p><span className={guide.valid ? "font-medium text-emerald-700" : "font-medium text-red-700"}>{guide.valid ? "Válida" : "Não válida"}</span></div>
-        <p>Número: <span className="font-mono">{guide.id}</span></p>
-        <p className="text-muted-foreground">CPF: {guide.patient?.cpf || "indisponível"} · {guide.professional}</p>
-        <p className="text-muted-foreground">Consulta: {guide.startsAt ? date(guide.startsAt) : "indisponível"} · Emitida: {date(guide.issuedAt)}</p>
-        {!guide.valid && <p className="text-red-700">Pagamento: {guide.paymentStatus} · Consulta: {guide.appointmentStatus || "indisponível"}</p>}
-        <div className="flex items-center justify-between border-t pt-2 mt-2">
-          <span className="text-xs text-muted-foreground">
-            {guide.valid ? "Guia liberada para atendimento" : "Aguardando confirmação"}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 text-xs font-medium"
-            onClick={() => setExportGuide(guide)}
-          >
-            <Download className="h-3.5 w-3.5 text-teal" />
-            Exportar guia
-          </Button>
-        </div>
-      </article>)}
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Carregando...</p>
+      ) : !error && guides.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nenhuma guia encontrada.</p>
+      ) : (
+        guides.map((guide) => {
+          const creds = guideCredentials(guide.id)
+          return (
+            <article key={guide.id} className="space-y-2 rounded-xl border bg-card p-4 text-sm shadow-sm hover:border-teal/50 transition-colors">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-semibold text-base text-foreground">
+                    {guide.patient?.name || "Paciente indisponível"}
+                  </p>
+                  <p className="text-xs text-muted-foreground font-medium">
+                    {guide.service}
+                  </p>
+                </div>
+                <span
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                    guide.valid
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : "bg-red-50 text-red-700 border border-red-200"
+                  }`}
+                >
+                  {guide.valid ? "● Válida" : "● Não válida"}
+                </span>
+              </div>
+
+              <div className="grid gap-1.5 sm:grid-cols-2 text-xs pt-1 text-muted-foreground">
+                <p>
+                  <span className="font-medium text-foreground">Guia nº:</span>{" "}
+                  <span className="font-mono font-semibold text-foreground">{creds.number}</span>{" "}
+                  <span className="text-[11px]">(senha: {creds.password})</span>
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">CPF:</span>{" "}
+                  {guide.patient?.cpf ? formatCpf(guide.patient.cpf) : "indisponível"}
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">Médico / Especialista:</span>{" "}
+                  {guide.professional || "Geral da clínica"}
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">Consulta:</span>{" "}
+                  {guide.startsAt ? date(guide.startsAt) : "indisponível"} · Emitida: {date(guide.issuedAt)}
+                </p>
+              </div>
+
+              {!guide.valid && (
+                <p className="text-xs text-destructive bg-destructive/5 p-2 rounded-md">
+                  Pagamento: {guide.paymentStatus} · Consulta: {guide.appointmentStatus || "indisponível"}
+                </p>
+              )}
+
+              <div className="flex items-center justify-between border-t pt-2 mt-2">
+                <span className="text-xs text-muted-foreground">
+                  {guide.valid ? "✓ Guia liberada para atendimento presencial" : "Aguardando confirmação de pagamento"}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs font-medium border-teal/40 text-teal hover:bg-teal/10"
+                  onClick={() => setExportGuide(guide)}
+                >
+                  <Download className="h-3.5 w-3.5 text-teal" />
+                  Exportar guia
+                </Button>
+              </div>
+            </article>
+          )
+        })
+      )}
       {guides.length === 100 && <p className="text-xs text-muted-foreground">Exibindo as 100 guias mais recentes. Use a busca para refinar.</p>}
     </section>
     <GuideExportDialog

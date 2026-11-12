@@ -144,7 +144,7 @@ function AccountStep() {
     return (
       <AssociatePitch
         title="Quer ser associado?"
-        lead="Veja todos os benefícios e, se quiser continuar, informe o cartão somente na página segura da Asaas. A mensalidade não aceita Pix."
+        lead="Veja todos os benefícios e assine diretamente pelo aplicativo com cartão de crédito, Pix ou boleto bancário."
         stepsCurrent={1}
         primaryLabel="Criar conta e ver assinatura"
         onPrimary={() => void createAccount(true)}

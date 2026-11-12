@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { Building2 } from "lucide-react"
 import { toast } from "sonner"
 import { ServiceFields } from "@/components/desktop/service-fields"
 import { Button } from "@/components/ui/button"
@@ -8,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { formatMoney } from "@/lib/format"
 import { ASAAS_PIX_MINIMUM } from "@/lib/asaas/minimums"
 import { useDemoStore } from "@/lib/store"
-import type { ClinicRole, Professional, Service } from "@/lib/types"
+import type { ClinicRole, PartnerClinic, Professional, Service } from "@/lib/types"
 
 export function canManageServices(role?: ClinicRole | null): boolean {
   return role !== "attendant"
@@ -30,6 +32,8 @@ export interface ClinicOffer {
   name: string
   kind: string
   professionalId: string | null
+  clinicId?: string | null
+  clinicName?: string | null
   price: number
   durationMin: number
 }
@@ -51,7 +55,9 @@ export function ServicesView({
   const [services, setServices] = useState<Service[]>([])
   const [activeTab, setActiveTab] = useState<"consultas" | "procedimentos">(initialTab)
 
-  // Procedimentos da clínica
+  // Procedimentos da clínica e clínicas parceiras
+  const [clinics, setClinics] = useState<PartnerClinic[]>([])
+  const [selectedClinicId, setSelectedClinicId] = useState("")
   const [clinicOffers, setClinicOffers] = useState<ClinicOffer[]>([])
   const [clinicServices, setClinicServices] = useState<Service[]>([])
   const [loadingClinic, setLoadingClinic] = useState(true)
@@ -61,6 +67,18 @@ export function ServicesView({
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  async function refreshClinics() {
+    try {
+      const response = await fetch("/api/desktop/clinics", { cache: "no-store" })
+      const result = (await response.json()) as { clinics?: PartnerClinic[] }
+      if (response.ok && Array.isArray(result.clinics)) {
+        setClinics(result.clinics)
+      }
+    } catch {
+      // Ignora erro de rede em background
+    }
+  }
 
   async function refreshProfessionals() {
     const response = await fetch("/api/desktop/professionals", { cache: "no-store" })
@@ -118,6 +136,15 @@ export function ServicesView({
             setClinicError(err instanceof Error ? err.message : "Não foi possível carregar os procedimentos da clínica.")
           }
         }),
+
+      fetch("/api/desktop/clinics", { cache: "no-store", signal: controller.signal })
+        .then(async (res) => {
+          const result = (await res.json()) as { clinics?: PartnerClinic[] }
+          if (res.ok && !controller.signal.aborted && Array.isArray(result.clinics)) {
+            setClinics(result.clinics)
+          }
+        })
+        .catch(() => {}),
     ]).finally(() => {
       if (!controller.signal.aborted) {
         setLoading(false)
@@ -205,7 +232,11 @@ export function ServicesView({
       const response = await fetch("/api/desktop/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ professionalId: null, services: clinicServices }),
+        body: JSON.stringify({
+          professionalId: null,
+          clinicId: selectedClinicId || null,
+          services: clinicServices,
+        }),
       })
       const result = (await response.json()) as { error?: string }
       if (!response.ok) throw new Error(result.error || "Não foi possível salvar os procedimentos da clínica.")
@@ -353,15 +384,49 @@ export function ServicesView({
           ) : null}
 
           <div className="space-y-5 rounded-2xl border bg-card p-5">
-            <div className="space-y-1 text-sm">
-              <label className="font-medium text-foreground">Profissional responsável</label>
-              <div className="flex h-10 items-center justify-between rounded-md border border-input bg-muted/40 px-3 text-sm">
-                <span className="font-medium text-foreground">Geral da Clínica (Sem médico específico)</span>
-                <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">Clínica</span>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-1 text-sm">
+                <label className="font-medium text-foreground">Profissional responsável</label>
+                <div className="flex h-10 items-center justify-between rounded-md border border-input bg-muted/40 px-3 text-sm">
+                  <span className="font-medium text-foreground">Geral da Clínica (Sem médico específico)</span>
+                  <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">Clínica</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Procedimentos ambulatoriais, exames e curativos realizados sem necessidade de médico específico.
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Procedimentos ambulatoriais, exames e curativos realizados pela equipe da clínica sem necessidade de médico específico.
-              </p>
+
+              <div className="space-y-1 text-sm">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="clinic-select" className="font-medium text-foreground">
+                    Clínica / Local de atendimento
+                  </label>
+                  <Link
+                    href="/desktop/clinicas"
+                    className="text-xs text-teal hover:underline flex items-center gap-1 font-medium"
+                  >
+                    <Building2 className="size-3" /> Clínicas parceiras →
+                  </Link>
+                </div>
+                <select
+                  id="clinic-select"
+                  value={selectedClinicId}
+                  onChange={(e) => setSelectedClinicId(e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 font-normal text-sm"
+                >
+                  <option value="">CuidarSaude (Sede padrão)</option>
+                  {clinics
+                    .filter((c) => c.id !== "clinic-default")
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} — {c.city}
+                      </option>
+                    ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Vincule este procedimento à matriz ou a um laboratório/clínica parceira cadastrada.
+                </p>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -372,11 +437,17 @@ export function ServicesView({
                 <div className="divide-y rounded-lg border bg-background/50">
                   {clinicOffers.map((offer) => (
                     <div key={offer.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">{offer.name}</span>
                         <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground capitalize">
                           {offer.kind === "exame" ? "Procedimento / Exame" : offer.kind}
                         </span>
+                        {offer.clinicName ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-teal/10 px-2.5 py-0.5 text-xs font-medium text-teal ring-1 ring-teal/20">
+                            <Building2 className="size-3" />
+                            {offer.clinicName}
+                          </span>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-3 text-muted-foreground">
                         <span>{formatMoney(offer.price)}</span>

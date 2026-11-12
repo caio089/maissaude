@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react"
 import {
   Activity,
   Bell,
+  Building2,
   CalendarDays,
   ClipboardList,
   FileText,
@@ -49,6 +50,7 @@ export const NAV = [
   { href: "/desktop/consultas", label: "Consultas", icon: ClipboardList },
   { href: "/desktop/guias", label: "Guias", icon: FileText },
   { href: "/desktop/atendimentos", label: "Consultas e procedimentos", icon: Stethoscope },
+  { href: "/desktop/clinicas", label: "Clínicas", icon: Building2 },
   { href: "/desktop/cirurgias", label: "Cirurgias", icon: Activity },
   { href: "/desktop/pacientes", label: "Pacientes", icon: Users },
   { href: "/desktop/associados", label: "Associados", icon: IdCard },

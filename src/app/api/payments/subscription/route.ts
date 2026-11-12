@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { createAsaasCharge } from "@/lib/asaas/charges"
 import { createAssociateCardPaymentLink } from "@/lib/asaas/payment-links"
+import { createAsaasSubscription } from "@/lib/asaas/subscriptions"
 import { evaluateAssociateStatus } from "@/lib/associate-rules"
 import { requestOrigin } from "@/lib/auth/origin"
 import { cpfDigits, formatCpf } from "@/lib/cpf"
@@ -73,6 +74,23 @@ export async function GET() {
 type SubscriptionRequestBody = {
   billingType?: "PIX" | "BOLETO" | "CREDIT_CARD"
   monthsToPay?: number
+  creditCard?: {
+    holderName?: string
+    number?: string
+    expiryMonth?: string
+    expiryYear?: string
+    ccv?: string
+  }
+  creditCardHolderInfo?: {
+    name?: string
+    email?: string
+    cpfCnpj?: string
+    postalCode?: string
+    addressNumber?: string
+    addressComplement?: string
+    phone?: string
+    mobilePhone?: string
+  }
 }
 
 export async function POST(request: Request) {
@@ -142,6 +160,86 @@ export async function POST(request: Request) {
           { error: "Já existe uma assinatura em andamento.", subscriptionId: currentSubscription.id },
           { status: 409 },
         )
+      }
+
+      // Se dados do cartão foram fornecidos, realiza o checkout transparente no Asaas sem sair do domínio
+      if (body.creditCard?.number) {
+        const cardNumber = body.creditCard.number.replace(/\D/g, "")
+        const holderName = body.creditCard.holderName?.trim() || ""
+        const expiryMonth = body.creditCard.expiryMonth?.trim() || ""
+        const expiryYear = body.creditCard.expiryYear?.trim() || ""
+        const ccv = body.creditCard.ccv?.trim() || ""
+        const postalCode = (body.creditCardHolderInfo?.postalCode || "").replace(/\D/g, "")
+        const addressNumber = body.creditCardHolderInfo?.addressNumber?.trim() || "S/N"
+
+        if (cardNumber.length < 13 || cardNumber.length > 19) {
+          return NextResponse.json({ error: "Número do cartão inválido." }, { status: 422 })
+        }
+        if (holderName.length < 3) {
+          return NextResponse.json({ error: "Nome impresso no cartão inválido." }, { status: 422 })
+        }
+        if (!/^(0?[1-9]|1[0-2])$/.test(expiryMonth)) {
+          return NextResponse.json({ error: "Mês de vencimento inválido." }, { status: 422 })
+        }
+        if (!/^\d{2,4}$/.test(expiryYear)) {
+          return NextResponse.json({ error: "Ano de vencimento inválido." }, { status: 422 })
+        }
+        if (!/^\d{3,4}$/.test(ccv)) {
+          return NextResponse.json({ error: "Código de segurança (CVV) inválido." }, { status: 422 })
+        }
+        if (postalCode.length !== 8) {
+          return NextResponse.json({ error: "CEP do titular é obrigatório (8 dígitos)." }, { status: 422 })
+        }
+
+        const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+        const remoteIp = forwarded || request.headers.get("x-real-ip") || "127.0.0.1"
+
+        const { subscription, payment } = await createAsaasSubscription({
+          patientId: patient.id,
+          associateId,
+          name: patient.name,
+          cpf,
+          email: patient.email,
+          mobilePhone: patient.phone,
+          value: fee,
+          billingType: "CREDIT_CARD",
+          description: "Mensalidade de associado CuidarSaude",
+          creditCard: {
+            holderName: holderName.toUpperCase(),
+            number: cardNumber,
+            expiryMonth: expiryMonth.padStart(2, "0"),
+            expiryYear: expiryYear.length === 2 ? `20${expiryYear}` : expiryYear,
+            ccv,
+          },
+          creditCardHolderInfo: {
+            name: body.creditCardHolderInfo?.name?.trim() || patient.name,
+            email: body.creditCardHolderInfo?.email?.trim().toLowerCase() || patient.email,
+            cpfCnpj: cpfDigits(body.creditCardHolderInfo?.cpfCnpj || cpf),
+            postalCode,
+            addressNumber,
+            addressComplement: body.creditCardHolderInfo?.addressComplement?.trim() || undefined,
+            phone: patient.phone,
+            mobilePhone: patient.phone,
+          },
+          remoteIp,
+        })
+
+        await admin.from("associates").update({
+          status: "active",
+          overdue_months: 0,
+          last_paid_at: new Date().toISOString(),
+        }).eq("id", associateId)
+
+        return NextResponse.json({
+          ok: true,
+          associateId,
+          value: fee,
+          billingType: "CREDIT_CARD",
+          status: "active",
+          subscriptionId: subscription.id,
+          paymentId: payment?.id,
+          message: "Assinatura ativada com sucesso!",
+        })
       }
 
       const origin = await requestOrigin()

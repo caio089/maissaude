@@ -15,6 +15,12 @@ import {
   ShieldCheck,
 } from "lucide-react"
 import { toast } from "sonner"
+import {
+  CreditCardFormData,
+  CreditCardFormErrors,
+  CreditCardFormFields,
+  validateCreditCardForm,
+} from "@/components/shared/credit-card-form"
 import { FlowSteps } from "@/components/shared/flow-steps"
 import { Button } from "@/components/ui/button"
 import {
@@ -110,10 +116,22 @@ export function AssociatePayForm({
   rules: AssociateRules
   className?: string
 }) {
+  const patientId = useDemoStore((state) => state.mobileSessionPatientId)
+  const patient = useDemoStore((state) => state.data.patients.find((item) => item.id === patientId))
   const [billingType, setBillingType] = useState<AssociateBillingMethod>("CREDIT_CARD")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const [result, setResult] = useState<AssociateSubscriptionChargeResult | null>(null)
+  const [cardForm, setCardForm] = useState<CreditCardFormData>({
+    number: "",
+    holderName: patient?.name?.toUpperCase() || "",
+    expiryMonth: "",
+    expiryYear: "",
+    ccv: "",
+    postalCode: "",
+    addressNumber: "",
+  })
+  const [cardErrors, setCardErrors] = useState<CreditCardFormErrors>({})
   const confirmRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -122,6 +140,15 @@ export function AssociatePayForm({
 
   async function handleSubmit() {
     setError("")
+    if (billingType === "CREDIT_CARD") {
+      const validation = validateCreditCardForm(cardForm)
+      if (Object.keys(validation).length > 0) {
+        setCardErrors(validation)
+        return
+      }
+      setCardErrors({})
+    }
+
     setPending(true)
     try {
       if (onConfirm) {
@@ -130,12 +157,27 @@ export function AssociatePayForm({
         return
       }
 
+      const payload: any = { billingType }
+      if (billingType === "CREDIT_CARD") {
+        payload.creditCard = {
+          holderName: cardForm.holderName.trim().toUpperCase(),
+          number: cardForm.number.replace(/\D/g, ""),
+          expiryMonth: cardForm.expiryMonth,
+          expiryYear: cardForm.expiryYear,
+          ccv: cardForm.ccv,
+        }
+        payload.creditCardHolderInfo = {
+          postalCode: cardForm.postalCode.replace(/\D/g, ""),
+          addressNumber: cardForm.addressNumber.trim(),
+        }
+      }
+
       const response = await fetch("/api/payments/subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ billingType }),
+        body: JSON.stringify(payload),
       })
-      const body = (await response.json()) as { error?: string } & AssociateSubscriptionChargeResult
+      const body = (await response.json()) as { error?: string; status?: string } & AssociateSubscriptionChargeResult
       if (!response.ok || body.error) {
         setError(body.error || "Não foi possível gerar a assinatura.")
         return
@@ -147,7 +189,7 @@ export function AssociatePayForm({
           ? "QR Code Pix gerado com sucesso!"
           : billingType === "BOLETO"
           ? "Boleto gerado com sucesso!"
-          : "Página segura da Asaas gerada com sucesso!",
+          : "Assinatura no cartão ativada com sucesso!",
       )
       onSuccess?.(body)
     } catch {
@@ -282,12 +324,12 @@ export function AssociatePayForm({
       <div className={className}>
         <section className="surface-card p-5 space-y-4">
           <div className="text-center">
-            <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[#e9eef8] text-[#365f8b]">
-              <ShieldCheck className="size-6" />
+            <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[#dff2ee] text-teal">
+              <BadgeCheck className="size-6" />
             </span>
-            <h2 className="mt-3 text-lg font-semibold">Página segura pronta</h2>
+            <h2 className="mt-3 text-lg font-semibold">Assinatura ativada com sucesso!</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Abra a Asaas, informe o cartão e conclua a assinatura mensal. A associação será ativada após a confirmação do pagamento.
+              Seu plano de associado já está ativo e você já tem acesso a todos os descontos em consultas e exames.
             </p>
           </div>
 
@@ -299,13 +341,9 @@ export function AssociatePayForm({
             </Button>
           ) : null}
 
-          <button
-            type="button"
-            className="w-full text-sm text-teal text-center pt-2"
-            onClick={() => setResult(null)}
-          >
-            Voltar aos detalhes
-          </button>
+          <Button type="button" className="w-full h-11" onClick={onBack}>
+            Concluir
+          </Button>
         </section>
       </div>
     )
@@ -376,10 +414,18 @@ export function AssociatePayForm({
       </div>
 
       {billingType === "CREDIT_CARD" ? (
-        <p className="mt-4 flex items-start gap-2 rounded-2xl bg-[#e9eef8] p-4 text-sm text-[#365f8b]">
-          <CreditCard className="mt-0.5 size-4 shrink-0" />
-          A mensalidade não aceita Pix na modalidade de recorrência automática. Os dados do cartão ficam protegidos com a Asaas e não são armazenados neste aplicativo.
-        </p>
+        <div className="mt-4 space-y-3">
+          <p className="flex items-start gap-2 rounded-2xl bg-[#e9eef8] p-4 text-sm text-[#365f8b]">
+            <CreditCard className="mt-0.5 size-4 shrink-0" />
+            Cobrança mensal recorrente no cartão de crédito. Seus dados são processados com total segurança e criptografia.
+          </p>
+          <CreditCardFormFields
+            value={cardForm}
+            onChange={setCardForm}
+            errors={cardErrors}
+            disabled={pending}
+          />
+        </div>
       ) : null}
 
       {billingType === "PIX" ? (
@@ -411,7 +457,7 @@ export function AssociatePayForm({
             </span>
             <span>
               {billingType === "CREDIT_CARD"
-                ? "Abrimos a página segura da Asaas para você cadastrar o cartão com segurança."
+                ? "Preencha os dados do cartão com segurança para ativação imediata do seu plano."
                 : billingType === "PIX"
                 ? "Geramos o QR Code e o código Pix Copia e Cola para pagamento imediato."
                 : "Geramos o boleto bancário com código de barras para pagamento."}
@@ -437,7 +483,7 @@ export function AssociatePayForm({
         >
           {pending ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
           {billingType === "CREDIT_CARD"
-            ? "Continuar para o cartão"
+            ? `Assinar com cartão · ${formatMoney(rules.fee)}/mês`
             : billingType === "PIX"
             ? `Gerar Pix · ${formatMoney(rules.fee)}`
             : `Gerar Boleto · ${formatMoney(rules.fee)}`}

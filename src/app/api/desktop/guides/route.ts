@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { hasClinicSession } from "@/lib/clinic-session"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
-import { SPECIALTY_LABEL, type Specialty } from "@/lib/types"
+import { SPECIALTY_LABEL, type Specialty, DEFAULT_CLINIC_PROFILE } from "@/lib/types"
 import type { AuthorizationGuideInput } from "@/lib/authorization-guide"
 
 export async function GET(request: Request) {
@@ -30,18 +30,37 @@ export async function GET(request: Request) {
   const appointmentIds = [...new Set(guides.map((item) => item.appointment_id))]
   const paymentIds = [...new Set(guides.map((item) => item.payment_id))]
   const [appointments, payments, clinicRes] = await Promise.all([
-    db.from("appointments").select("id,patient_id,professional_id,service_id,starts_at,status,payment_id").in("id", appointmentIds),
+    db.from("appointments").select("id,patient_id,professional_id,service_id,starts_at,status,payment_id,notes").in("id", appointmentIds),
     db.from("payments").select("id,status,simulated,asaas_payment_id").in("id", paymentIds),
-    db.from("clinics").select("id,name,phone,address,city").limit(1),
+    db.from("clinics").select("id,name,phone,address,city").limit(10),
   ])
   if (appointments.error || payments.error) return NextResponse.json({ error: "Não foi possível carregar os detalhes das guias." }, { status: 500 })
 
-  const clinicData = clinicRes.data?.[0]
-  const clinic = {
-    name: clinicData?.name?.trim() || "",
-    phone: clinicData?.phone?.trim() || null,
-    address: clinicData?.address?.trim() || null,
-    city: clinicData?.city?.trim() || null,
+  const defaultClinicData = clinicRes.data?.find((c: any) => c.id === "clinic-default") || clinicRes.data?.[0]
+  const defaultClinic = {
+    name: defaultClinicData?.name?.trim() || (defaultClinicData ? "" : DEFAULT_CLINIC_PROFILE.name),
+    phone: defaultClinicData?.phone?.trim() || (defaultClinicData ? null : DEFAULT_CLINIC_PROFILE.phone),
+    address: defaultClinicData?.address?.trim() || (defaultClinicData ? null : DEFAULT_CLINIC_PROFILE.address),
+    city: defaultClinicData?.city?.trim() || (defaultClinicData ? null : DEFAULT_CLINIC_PROFILE.city),
+  }
+
+  const getClinicForAppointment = (notes?: string) => {
+    if (notes && notes.includes("[Clínica:")) {
+      const match = notes.match(/\[Clínica:\s*([^\]]+)\]/)
+      if (match) {
+        const clinicName = match[1].trim().toLowerCase()
+        const found = clinicRes.data?.find((c: any) => c.name?.trim().toLowerCase() === clinicName)
+        if (found) {
+          return {
+            name: found.name?.trim() || found.name,
+            phone: found.phone?.trim() || defaultClinic.phone,
+            address: found.address?.trim() || defaultClinic.address,
+            city: found.city?.trim() || defaultClinic.city,
+          }
+        }
+      }
+    }
+    return defaultClinic
   }
 
   const ids = (key: "patient_id" | "professional_id" | "service_id") => [...new Set(appointments.data.map((item) => item[key]).filter(Boolean))]
@@ -65,6 +84,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     guides: guides.map((guide) => {
       const appointment = appointments.data.find((item) => item.id === guide.appointment_id)
+      const clinic = getClinicForAppointment(appointment?.notes)
       const payment = payments.data.find((item) => item.id === guide.payment_id)
       const patient = patients.data.find((item) => item.id === appointment?.patient_id)
       const professional = professionals.data.find((item) => item.id === appointment?.professional_id)

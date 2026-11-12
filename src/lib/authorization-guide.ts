@@ -288,12 +288,12 @@ function drawHeaderAuthStamp(
 function drawCredentialBoxes(context: CanvasRenderingContext2D, number: string, password: string) {
   drawBox(context, 48, 172, 222, 52, "Nº DA GUIA", number)
   drawBox(context, 282, 172, 222, 52, "SENHA DE ATENDIMENTO", password)
-  drawAuthenticBadge(context, 516, 172, 230, 52)
+  drawStatusBox(context, 516, 172, 230, 52)
 }
 
-function drawAuthenticBadge(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
+function drawStatusBox(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
   context.save()
-  context.fillStyle = "#0d5f47"
+  context.fillStyle = "#f0fdf4"
   context.beginPath()
   if (typeof context.roundRect === "function") {
     context.roundRect(x, y, width, height, 6)
@@ -302,18 +302,17 @@ function drawAuthenticBadge(context: CanvasRenderingContext2D, x: number, y: num
   }
   context.fill()
 
-  context.strokeStyle = "#34d399"
+  context.strokeStyle = "#86efac"
   context.lineWidth = 1
-  context.strokeRect(x + 3, y + 3, width - 6, height - 6)
+  context.stroke()
 
-  context.textAlign = "center"
-  context.fillStyle = "#ffffff"
-  context.font = "700 13px system-ui, sans-serif"
-  context.fillText("✓ GUIA AUTORIZADA", x + width / 2, y + 22)
+  context.fillStyle = "#047857"
+  context.font = "600 11px system-ui, sans-serif"
+  context.fillText("SITUAÇÃO DA GUIA", x + 14, y + 20)
 
-  context.fillStyle = "#a7f3d0"
-  context.font = "600 10px system-ui, sans-serif"
-  context.fillText("AUTENTICADA NO SISTEMA", x + width / 2, y + 39)
+  context.fillStyle = "#065f46"
+  context.font = "700 15px system-ui, sans-serif"
+  context.fillText("✓ LIBERADA", x + 14, y + 40)
   context.restore()
 }
 
@@ -332,8 +331,17 @@ function drawBox(context: CanvasRenderingContext2D, x: number, y: number, width:
 type SectionRowItem = [label: string, value: string, highlight?: boolean]
 
 function drawSection(context: CanvasRenderingContext2D, y: number, title: string, rows: SectionRowItem[]) {
+  context.save()
   context.fillStyle = "#0d3b4c"
-  context.fillRect(48, y, 698, 28)
+  context.beginPath()
+  if (typeof context.roundRect === "function") {
+    context.roundRect(48, y, 698, 28, [4, 4, 0, 0])
+  } else {
+    context.rect(48, y, 698, 28)
+  }
+  context.fill()
+  context.restore()
+
   context.fillStyle = "#ffffff"
   context.font = "600 13px system-ui, sans-serif"
   context.fillText(title, 60, y + 19)
@@ -385,8 +393,17 @@ function drawDoctorSection(
   isGeneralClinic: boolean,
   professionalName: string,
 ) {
+  context.save()
   context.fillStyle = "#0d3b4c"
-  context.fillRect(48, y, 698, 28)
+  context.beginPath()
+  if (typeof context.roundRect === "function") {
+    context.roundRect(48, y, 698, 28, [4, 4, 0, 0])
+  } else {
+    context.rect(48, y, 698, 28)
+  }
+  context.fill()
+  context.restore()
+
   context.fillStyle = "#ffffff"
   context.font = "600 13px system-ui, sans-serif"
   context.fillText(title, 60, y + 19)
@@ -431,13 +448,19 @@ function drawCircularPhoto(
   context.clip()
 
   const size = radius * 2
-  context.drawImage(image, centerX - radius, centerY - radius, size, size)
+  const imgW = image.naturalWidth || image.width || size
+  const imgH = image.naturalHeight || image.height || size
+  const cropSize = Math.min(imgW, imgH)
+  const sx = (imgW - cropSize) / 2
+  const sy = (imgH - cropSize) / 2
+
+  context.drawImage(image, sx, sy, cropSize, cropSize, centerX - radius, centerY - radius, size, size)
   context.restore()
 
   context.save()
   context.beginPath()
   context.arc(centerX, centerY, radius, 0, Math.PI * 2)
-  context.strokeStyle = "#d0d7de"
+  context.strokeStyle = "#0d5f47"
   context.lineWidth = 2
   context.stroke()
   context.restore()
@@ -519,8 +542,17 @@ function drawProcedureTable(
   y: number,
   rows: Array<{ code: string; description: string; doctor: string; sector: string }>,
 ) {
+  context.save()
   context.fillStyle = "#0d3b4c"
-  context.fillRect(48, y, 698, 28)
+  context.beginPath()
+  if (typeof context.roundRect === "function") {
+    context.roundRect(48, y, 698, 28, [4, 4, 0, 0])
+  } else {
+    context.rect(48, y, 698, 28)
+  }
+  context.fill()
+  context.restore()
+
   context.fillStyle = "#ffffff"
   context.font = "600 13px system-ui, sans-serif"
   context.fillText("Dados dos procedimentos", 60, y + 19)
@@ -539,7 +571,16 @@ function drawProcedureTable(
   for (const header of headers) context.fillText(header.label, header.x, y + 46)
 
   let cursor = y + 74
-  for (const row of rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    if (i > 0) {
+      context.strokeStyle = "#e2e8f0"
+      context.lineWidth = 1
+      context.beginPath()
+      context.moveTo(48, cursor - 14)
+      context.lineTo(746, cursor - 14)
+      context.stroke()
+    }
     context.fillStyle = "#102027"
     context.font = "13px system-ui, sans-serif"
     const columns = [
@@ -553,7 +594,7 @@ function drawProcedureTable(
     for (const column of columns) {
       rowBottom = Math.max(rowBottom, fillWrapped(context, column.value, column.x, cursor, column.width, 16))
     }
-    cursor = rowBottom + 8
+    cursor = rowBottom + 14
   }
   return cursor
 }

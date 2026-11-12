@@ -47,4 +47,12 @@ describe("Desktop Navigation Role Adaptation (getVisibleNav)", () => {
     expect(nav.some((item) => item.href === "/desktop/financeiro")).toBe(true)
     expect(nav.some((item) => item.href === "/desktop/equipe")).toBe(false)
   })
+
+  it("inclui a rota de Clínicas no menu lateral tanto para atendentes quanto administradores", () => {
+    const attendantNav = getVisibleNav("attendant")
+    const adminNav = getVisibleNav("admin")
+
+    expect(attendantNav.some((item) => item.href === "/desktop/clinicas" && item.label === "Clínicas")).toBe(true)
+    expect(adminNav.some((item) => item.href === "/desktop/clinicas" && item.label === "Clínicas")).toBe(true)
+  })
 })

@@ -9,10 +9,16 @@ import { Field } from "@/components/shared/field"
 import { EmptyState } from "@/components/shared/empty-state"
 import { FadeIn } from "@/components/shared/fade-in"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  CreditCardFormData,
+  CreditCardFormErrors,
+  CreditCardFormFields,
+  validateCreditCardForm,
+} from "@/components/shared/credit-card-form"
 import { formatDate, formatMoney } from "@/lib/format"
 import { cpfDigits, formatCpf } from "@/lib/cpf"
 import { useDemoStore } from "@/lib/store"
@@ -20,7 +26,7 @@ import type { Associate, AssociateInput, AssociateStatus, ClinicRole, Patient } 
 import { hasErrors, validateAssociateInput, type FieldErrors } from "@/lib/validation"
 
 type BillingType = "PIX" | "BOLETO" | "CREDIT_CARD"
-type StatusFilter = "all" | "active" | "overdue" | "cancelled"
+type StatusFilter = "active" | "inactive" | "overdue" | "cancelled" | "all"
 
 type PaymentResult = {
   billingType: BillingType
@@ -30,6 +36,7 @@ type PaymentResult = {
   bankSlipUrl?: string | null
   bankSlipBarcode?: string | null
   identificationField?: string | null
+  approved?: boolean
 }
 
 export interface AssociatesViewProps {
@@ -45,7 +52,7 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
   const createAssociate = useDemoStore((state) => state.createAssociate)
   const updateAssociate = useDemoStore((state) => state.updateAssociate)
   const [query, setQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active")
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Associate | null>(null)
   const [form, setForm] = useState<AssociateInput>(() => emptyAssociateForm())
@@ -64,6 +71,17 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
   const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null)
   const [generatingPayment, setGeneratingPayment] = useState(false)
   const [registeringCounter, setRegisteringCounter] = useState(false)
+
+  const [cardForm, setCardForm] = useState<CreditCardFormData>({
+    number: "",
+    holderName: "",
+    expiryMonth: "",
+    expiryYear: "",
+    ccv: "",
+    postalCode: "",
+    addressNumber: "",
+  })
+  const [cardErrors, setCardErrors] = useState<CreditCardFormErrors>({})
 
   useEffect(() => {
     let active = true
@@ -137,14 +155,17 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
     let active = 0
     let overdue = 0
     let cancelled = 0
+    let inactive = 0
     for (const item of allAssociates) {
       if (item.status === "active") active++
       else if (item.status === "overdue") overdue++
       else if (item.status === "cancelled") cancelled++
+      else inactive++
     }
     return {
       all: allAssociates.length,
       active,
+      inactive,
       overdue,
       cancelled,
     }
@@ -153,8 +174,14 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase()
     return allAssociates.filter((associate) => {
-      if (statusFilter !== "all" && associate.status !== statusFilter) {
-        return false
+      if (statusFilter !== "all") {
+        if (statusFilter === "inactive") {
+          if (associate.status !== "inactive" && ["active", "overdue", "cancelled"].includes(associate.status)) {
+            return false
+          }
+        } else if (associate.status !== statusFilter) {
+          return false
+        }
       }
       if (!term) return true
       return [associate.name, associate.cpf, associate.phone, associate.email].some((value) =>
@@ -244,7 +271,85 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
     setPaymentResult(null)
   }
 
+  async function handleProcessCreditCard(target: Associate) {
+    const v = validateCreditCardForm(cardForm)
+    if (Object.keys(v).length > 0) {
+      setCardErrors(v)
+      return
+    }
+    setCardErrors({})
+    setGeneratingPayment(true)
+    try {
+      const response = await fetch("/api/payments/associate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: target.name,
+          cpf: target.cpf,
+          phone: target.phone,
+          email: target.email,
+          billingType: "CREDIT_CARD",
+          monthsToPay: target.overdueMonths && target.overdueMonths > 0 ? target.overdueMonths : 1,
+          creditCard: {
+            holderName: cardForm.holderName.trim().toUpperCase(),
+            number: cardForm.number.replace(/\D/g, ""),
+            expiryMonth: cardForm.expiryMonth,
+            expiryYear: cardForm.expiryYear,
+            ccv: cardForm.ccv,
+          },
+          creditCardHolderInfo: {
+            postalCode: cardForm.postalCode.replace(/\D/g, ""),
+            addressNumber: cardForm.addressNumber.trim(),
+          },
+        }),
+      })
+      const body = (await response.json()) as { error?: string; status?: string; value?: number; paymentUrl?: string }
+      if (!response.ok || body.error) {
+        toast.error(body.error || "Não foi possível aprovar o cartão.")
+        return
+      }
+
+      setServerAssociates((prev) =>
+        prev.map((item) =>
+          item.id === target.id
+            ? { ...item, status: "active", overdueMonths: 0, lastPaidAt: new Date().toISOString() }
+            : item,
+        ),
+      )
+      updateAssociate(target.id, {
+        name: target.name,
+        cpf: target.cpf,
+        phone: target.phone,
+        email: target.email,
+        status: "active",
+        overdueMonths: 0,
+      })
+      setPaymentResult({
+        billingType: "CREDIT_CARD",
+        value: body.value || (target.overdueMonths && target.overdueMonths > 0 ? target.overdueMonths : 1) * rules.fee,
+        approved: true,
+      })
+      toast.success("Pagamento com cartão aprovado! Associado regularizado e ativo.")
+    } catch {
+      toast.error("Erro ao processar cartão.")
+    } finally {
+      setGeneratingPayment(false)
+    }
+  }
+
   async function generatePaymentForAssociate(target: Associate, method: BillingType) {
+    if (method === "CREDIT_CARD") {
+      setCardForm((prev) => ({
+        ...prev,
+        holderName: prev.holderName || target.name.toUpperCase(),
+      }))
+      setCardErrors({})
+      setPaymentResult({
+        billingType: "CREDIT_CARD",
+        value: (target.overdueMonths && target.overdueMonths > 0 ? target.overdueMonths : 1) * rules.fee,
+      })
+      return
+    }
     setGeneratingPayment(true)
     try {
       const response = await fetch("/api/payments/associate", {
@@ -353,17 +458,41 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
     if (hasErrors(nextErrors)) return
 
     if (!editing) {
+      if (newAssociateBillingType === "CREDIT_CARD") {
+        const v = validateCreditCardForm(cardForm)
+        if (Object.keys(v).length > 0) {
+          setCardErrors(v)
+          return
+        }
+        setCardErrors({})
+      }
+
       setSaving(true)
       try {
+        const payload: any = {
+          ...normalizedForm,
+          billingType: newAssociateBillingType,
+          patientId: selectedPatient?.id,
+          patient: selectedPatient?.snapshot,
+        }
+        if (newAssociateBillingType === "CREDIT_CARD") {
+          payload.creditCard = {
+            holderName: cardForm.holderName.trim().toUpperCase(),
+            number: cardForm.number.replace(/\D/g, ""),
+            expiryMonth: cardForm.expiryMonth,
+            expiryYear: cardForm.expiryYear,
+            ccv: cardForm.ccv,
+          }
+          payload.creditCardHolderInfo = {
+            postalCode: cardForm.postalCode.replace(/\D/g, ""),
+            addressNumber: cardForm.addressNumber.trim(),
+          }
+        }
+
         const response = await fetch("/api/payments/associate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...normalizedForm,
-            billingType: newAssociateBillingType,
-            patientId: selectedPatient?.id,
-            patient: selectedPatient?.snapshot,
-          }),
+          body: JSON.stringify(payload),
         })
         const body = (await response.json()) as {
           error?: string
@@ -371,6 +500,7 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
           value?: number
           billingType?: BillingType
           paymentUrl?: string
+          status?: string
           pix?: { payload: string; encodedImage: string } | null
           bankSlipUrl?: string | null
           bankSlipBarcode?: string | null
@@ -380,17 +510,19 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
           toast.error(body.error || "Não foi possível gerar a cobrança.")
           return
         }
+        const isApproved = newAssociateBillingType === "CREDIT_CARD" && body.status === "active"
         const newAss: Associate = {
           id: body.associateId,
           name: normalizedForm.name,
           cpf: normalizedForm.cpf,
           phone: normalizedForm.phone,
           email: normalizedForm.email,
-          status: "inactive",
+          status: isApproved ? "active" : "inactive",
           overdueMonths: 0,
           createdAt: new Date().toISOString(),
+          lastPaidAt: isApproved ? new Date().toISOString() : undefined,
         }
-        const result = createAssociate({ ...normalizedForm, status: "inactive", overdueMonths: 0 }, body.associateId)
+        const result = createAssociate(newAss, body.associateId)
         if (!result.ok) {
           toast.warning("Cobrança criada, mas a lista local não foi atualizada.")
         }
@@ -405,8 +537,13 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
           bankSlipUrl: body.bankSlipUrl,
           bankSlipBarcode: body.bankSlipBarcode || body.identificationField,
           identificationField: body.identificationField,
+          approved: isApproved,
         })
-        toast.success("Associado cadastrado e cobrança gerada com sucesso!")
+        toast.success(
+          isApproved
+            ? "Associado cadastrado e cartão aprovado com sucesso!"
+            : "Associado cadastrado e cobrança gerada com sucesso!",
+        )
         return
       } catch {
         toast.error("Não foi possível confirmar a criação da cobrança. Confira antes de tentar novamente.")
@@ -493,26 +630,6 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
             <button
               type="button"
               role="tab"
-              aria-selected={statusFilter === "all"}
-              onClick={() => setStatusFilter("all")}
-              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                statusFilter === "all"
-                  ? "bg-background text-foreground shadow-xs font-semibold"
-                  : "text-muted-foreground hover:bg-background/50 hover:text-foreground"
-              }`}
-            >
-              Todos
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
-                  statusFilter === "all" ? "bg-muted text-foreground" : "bg-muted/80 text-muted-foreground"
-                }`}
-              >
-                {counts.all}
-              </span>
-            </button>
-            <button
-              type="button"
-              role="tab"
               aria-selected={statusFilter === "active"}
               onClick={() => setStatusFilter("active")}
               className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
@@ -530,6 +647,28 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
                 }`}
               >
                 {counts.active}
+              </span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={statusFilter === "inactive"}
+              onClick={() => setStatusFilter("inactive")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                statusFilter === "inactive"
+                  ? "bg-background text-sky-700 shadow-xs font-semibold dark:text-sky-400"
+                  : "text-muted-foreground hover:bg-background/50 hover:text-foreground"
+              }`}
+            >
+              Aguardando
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
+                  statusFilter === "inactive"
+                    ? "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300"
+                    : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {counts.inactive}
               </span>
             </button>
             <button
@@ -576,6 +715,26 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
                 {counts.cancelled}
               </span>
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={statusFilter === "all"}
+              onClick={() => setStatusFilter("all")}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                statusFilter === "all"
+                  ? "bg-background text-foreground shadow-xs font-semibold"
+                  : "text-muted-foreground hover:bg-background/50 hover:text-foreground"
+              }`}
+            >
+              Todos
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
+                  statusFilter === "all" ? "bg-muted text-foreground" : "bg-muted/80 text-muted-foreground"
+                }`}
+              >
+                {counts.all}
+              </span>
+            </button>
           </div>
         </div>
       </div>
@@ -584,7 +743,19 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
         {filtered.length === 0 ? (
           <EmptyState
             icon={IdCard}
-            title={statusFilter !== "all" || query ? "Nenhum associado encontrado" : "Nenhum associado cadastrado"}
+            title={
+              query
+                ? "Nenhum associado encontrado"
+                : statusFilter === "active"
+                ? "Nenhum associado ativo (em dia)"
+                : statusFilter === "inactive"
+                ? "Nenhum associado aguardando ativação"
+                : statusFilter === "overdue"
+                ? "Nenhum associado em atraso"
+                : statusFilter === "cancelled"
+                ? "Nenhum associado cancelado"
+                : "Nenhum associado cadastrado"
+            }
             description={
               statusFilter !== "all" || query
                 ? "Tente ajustar o filtro de status ou os termos da pesquisa."
@@ -600,7 +771,7 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
                     setQuery("")
                   }}
                 >
-                  Limpar filtros
+                  Ver todos os associados
                 </Button>
               ) : (
                 <Button type="button" onClick={openCreate}>
@@ -694,135 +865,243 @@ export function AssociatesView({ initialRole, role: propRole }: AssociatesViewPr
       </div>
 
       {/* Modal de Criação / Edição de Associado */}
-      <Dialog open={formOpen} onOpenChange={(open) => { if (!saving) setFormOpen(open) }}>
+      <Dialog open={formOpen} onOpenChange={(open) => { if (!saving) { setFormOpen(open); if (!open) setEditing(null); } }}>
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editing ? `Gerenciar ${editing.name}` : "Novo associado"}</DialogTitle>
+            <DialogTitle>{editing ? `Editar associado: ${editing.name}` : "Novo associado"}</DialogTitle>
+            {editing && (
+              <DialogDescription>
+                Atualize os dados cadastrais ou a situação da assinatura do associado.
+              </DialogDescription>
+            )}
           </DialogHeader>
-          <FlowSteps steps={["Dados", "Cobrança", "Pagamento"]} current={modalStep} />
-          {modalStep === 0 && (
-            <>
-          {!editing ? (
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <Button type="button" variant={source === "new" ? "default" : "outline"} onClick={() => { setSource("new"); setSelectedPatient(null); setForm(emptyAssociateForm()); setErrors({}) }}>Novo cadastro</Button>
-                <Button type="button" variant={source === "patient" ? "default" : "outline"} onClick={() => void choosePatientSource()}>Buscar paciente ativo</Button>
+
+          {editing ? (
+            /* Formulário direto de edição (sem etapas de checkout) */
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Nome" htmlFor="associate-name" error={errors.name}>
+                  <Input id="associate-name" className="h-10" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+                </Field>
+                <Field label="CPF" htmlFor="associate-cpf" error={errors.cpf}>
+                  <Input id="associate-cpf" className="h-10" inputMode="numeric" placeholder="Somente números" value={form.cpf} onChange={(event) => setForm({ ...form, cpf: formatCpf(event.target.value) })} />
+                </Field>
+                <Field label="Telefone" htmlFor="associate-phone" error={errors.phone}>
+                  <Input id="associate-phone" className="h-10" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+                </Field>
+                <Field label="E-mail" htmlFor="associate-email" error={errors.email}>
+                  <Input id="associate-email" className="h-10" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+                </Field>
+                <div className="sm:col-span-2">
+                  <Field label="Situação do plano">
+                    <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value as AssociateStatus })}>
+                      <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Ativo (Em dia)</SelectItem>
+                        <SelectItem value="inactive">Inativo (Aguardando pagamento)</SelectItem>
+                        <SelectItem value="overdue">Em atraso</SelectItem>
+                        <SelectItem value="cancelled">Cancelado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </div>
               </div>
-              {source === "patient" ? (
-                <div className="space-y-2">
-                  <Input aria-label="Buscar paciente ativo" placeholder="Nome, CPF, telefone ou e-mail" value={patientQuery} onChange={(event) => setPatientQuery(event.target.value)} />
-                  {selectedPatient ? <p className="text-sm">Paciente selecionado: <strong>{selectedPatient.name}</strong></p> : null}
-                  <div className="max-h-36 overflow-y-auto rounded-md border">
-                    {loadingPatients ? <p className="p-3 text-sm text-muted-foreground">Buscando pacientes...</p> : patientChoices.length ? patientChoices.map((patient) => (
-                      <button key={patient.id} type="button" className="block w-full border-b p-2 text-left text-sm last:border-0 hover:bg-accent" onClick={() => selectPatient(patient)}>
-                        <span className="block font-medium">{patient.name}</span><span className="text-muted-foreground">CPF {formatCpf(patient.cpf)} · {patient.phone}</span>
-                      </button>
-                    )) : <p className="p-3 text-sm text-muted-foreground">Nenhum paciente ativo encontrado.</p>}
+
+              {form.status !== "cancelled" ? (
+                <div className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 p-3">
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-medium text-destructive">Deseja cancelar esta associação?</p>
+                    <p className="text-[11px] text-muted-foreground">O associado perderá os benefícios do plano de descontos.</p>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-destructive/30 text-destructive hover:bg-destructive/10 text-xs h-8"
+                    onClick={() => setForm({ ...form, status: "cancelled" })}
+                  >
+                    Definir como Cancelado
+                  </Button>
                 </div>
-              ) : null}
+              ) : (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/30 dark:bg-amber-950/20">
+                  <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                    Este associado está marcado como Cancelado.
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Para reativá-lo, mude a situação acima para &quot;Ativo (Em dia)&quot; e salve as alterações.
+                  </p>
+                </div>
+              )}
+
+              <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setFormOpen(false)
+                    setEditing(null)
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button type="button" disabled={saving} onClick={() => void save()}>
+                  {saving ? "Salvando..." : "Salvar alterações"}
+                </Button>
+              </DialogFooter>
             </div>
-          ) : null}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Nome" htmlFor="associate-name" error={errors.name}>
-              <Input id="associate-name" className="h-10" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-            </Field>
-            <Field label="CPF" htmlFor="associate-cpf" error={errors.cpf}>
-              <Input id="associate-cpf" className="h-10" inputMode="numeric" placeholder="Somente números" value={form.cpf} disabled={!editing && source === "patient" && Boolean(selectedPatient)} onChange={(event) => setForm({ ...form, cpf: formatCpf(event.target.value) })} />
-            </Field>
-            <Field label="Telefone" htmlFor="associate-phone" error={errors.phone}>
-              <Input id="associate-phone" className="h-10" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
-            </Field>
-            <Field label="E-mail" htmlFor="associate-email" error={errors.email}>
-              <Input id="associate-email" className="h-10" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-            </Field>
-            {editing ? (
-              <Field label="Status">
-                <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value as AssociateStatus })}>
-                  <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Ativo (Em dia)</SelectItem>
-                    <SelectItem value="overdue">Em atraso</SelectItem>
-                    <SelectItem value="cancelled">Cancelado</SelectItem>
-                    <SelectItem value="inactive">Inativo (Aguardando)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-            ) : (
-              <Field label="Forma de pagamento inicial">
-                <Select value={newAssociateBillingType} onValueChange={(value) => setNewAssociateBillingType(value as BillingType)}>
-                  <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="PIX">Pix (QR Code imediato)</SelectItem>
-                    <SelectItem value="BOLETO">Boleto bancário</SelectItem>
-                    <SelectItem value="CREDIT_CARD">Cartão de Crédito</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-            )}
-            <p className="self-end text-sm text-muted-foreground sm:col-span-2">
-              Mensalidade de {formatMoney(rules.fee)}. A associação é ativada automaticamente com a confirmação ou recebimento presencial.
-            </p>
-          </div>
-            </>
-          )}
-          {modalStep === 1 && (
+          ) : (
+            /* Fluxo de Criação de Novo Associado */
             <>
-              <section className="space-y-3 rounded-lg border p-4">
-                <div>
-                  <p className="text-sm font-semibold">{form.name}</p>
-                  <p className="text-xs text-muted-foreground">CPF {formatCpf(form.cpf)} · Mensalidade {formatMoney(rules.fee)}</p>
-                </div>
-                <div className="grid grid-cols-3 gap-2" role="group" aria-label="Forma de pagamento">
-                  {(["PIX", "BOLETO", "CREDIT_CARD"] as BillingType[]).map((method) => (
-                    <button
-                      key={method}
+              <FlowSteps steps={["Dados", "Cobrança", "Pagamento"]} current={modalStep} />
+              {modalStep === 0 && (
+                <>
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <Button type="button" variant={source === "new" ? "default" : "outline"} onClick={() => { setSource("new"); setSelectedPatient(null); setForm(emptyAssociateForm()); setErrors({}) }}>Novo cadastro</Button>
+                      <Button type="button" variant={source === "patient" ? "default" : "outline"} onClick={() => void choosePatientSource()}>Buscar paciente ativo</Button>
+                    </div>
+                    {source === "patient" ? (
+                      <div className="space-y-2">
+                        <Input aria-label="Buscar paciente ativo" placeholder="Nome, CPF, telefone ou e-mail" value={patientQuery} onChange={(event) => setPatientQuery(event.target.value)} />
+                        {selectedPatient ? <p className="text-sm">Paciente selecionado: <strong>{selectedPatient.name}</strong></p> : null}
+                        <div className="max-h-36 overflow-y-auto rounded-md border">
+                          {loadingPatients ? <p className="p-3 text-sm text-muted-foreground">Buscando pacientes...</p> : patientChoices.length ? patientChoices.map((patient) => (
+                            <button key={patient.id} type="button" className="block w-full border-b p-2 text-left text-sm last:border-0 hover:bg-accent" onClick={() => selectPatient(patient)}>
+                              <span className="block font-medium">{patient.name}</span><span className="text-muted-foreground">CPF {formatCpf(patient.cpf)} · {patient.phone}</span>
+                            </button>
+                          )) : <p className="p-3 text-sm text-muted-foreground">Nenhum paciente ativo encontrado.</p>}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Nome" htmlFor="associate-name" error={errors.name}>
+                      <Input id="associate-name" className="h-10" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+                    </Field>
+                    <Field label="CPF" htmlFor="associate-cpf" error={errors.cpf}>
+                      <Input id="associate-cpf" className="h-10" inputMode="numeric" placeholder="Somente números" value={form.cpf} disabled={source === "patient" && Boolean(selectedPatient)} onChange={(event) => setForm({ ...form, cpf: formatCpf(event.target.value) })} />
+                    </Field>
+                    <Field label="Telefone" htmlFor="associate-phone" error={errors.phone}>
+                      <Input id="associate-phone" className="h-10" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+                    </Field>
+                    <Field label="E-mail" htmlFor="associate-email" error={errors.email}>
+                      <Input id="associate-email" className="h-10" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+                    </Field>
+                    <div className="sm:col-span-2">
+                      <Field label="Forma de pagamento inicial">
+                        <Select value={newAssociateBillingType} onValueChange={(value) => setNewAssociateBillingType(value as BillingType)}>
+                          <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="PIX">Pix (QR Code imediato)</SelectItem>
+                            <SelectItem value="BOLETO">Boleto bancário</SelectItem>
+                            <SelectItem value="CREDIT_CARD">Cartão de Crédito</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    </div>
+                    <p className="self-end text-sm text-muted-foreground sm:col-span-2">
+                      Mensalidade de {formatMoney(rules.fee)}. A associação é ativada automaticamente com a confirmação ou recebimento presencial.
+                    </p>
+                  </div>
+                </>
+              )}
+              {modalStep === 1 && (
+                <>
+                  <section className="space-y-4 rounded-lg border p-4">
+                    <div>
+                      <p className="text-sm font-semibold">{form.name}</p>
+                      <p className="text-xs text-muted-foreground">CPF {formatCpf(form.cpf)} · Mensalidade {formatMoney(rules.fee)}</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2" role="group" aria-label="Forma de pagamento">
+                      {(["PIX", "BOLETO", "CREDIT_CARD"] as BillingType[]).map((method) => (
+                        <button
+                          key={method}
+                          type="button"
+                          onClick={() => setNewAssociateBillingType(method)}
+                          className={`rounded-md border p-2 text-xs font-medium transition-all ${
+                            newAssociateBillingType === method
+                              ? "border-teal bg-accent text-teal font-semibold"
+                              : "bg-background text-muted-foreground hover:bg-muted"
+                          }`}
+                        >
+                          {method === "PIX" ? "Pix" : method === "BOLETO" ? "Boleto" : "Cartão"}
+                        </button>
+                      ))}
+                    </div>
+                    {newAssociateBillingType === "BOLETO" ? (
+                      <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">O boleto pode levar até 3 dias úteis para compensar.</p>
+                    ) : null}
+                    {newAssociateBillingType === "CREDIT_CARD" ? (
+                      <CreditCardFormFields
+                        value={cardForm}
+                        onChange={setCardForm}
+                        errors={cardErrors}
+                        disabled={saving}
+                      />
+                    ) : null}
+                  </section>
+                </>
+              )}
+              {modalStep === 2 && paymentResult && paymentModalAssociate ? (
+                <PaymentResultPanel
+                  result={paymentResult}
+                  associate={paymentModalAssociate}
+                  rules={rules}
+                  registeringCounter={registeringCounter}
+                  generatingPayment={generatingPayment}
+                  cardForm={cardForm}
+                  onCardFormChange={setCardForm}
+                  cardErrors={cardErrors}
+                  onProcessCard={() => void handleProcessCreditCard(paymentModalAssociate)}
+                  onCounterPayment={() => void handleCounterPayment(paymentModalAssociate)}
+                  onGenerate={(method) => void generatePaymentForAssociate(paymentModalAssociate, method)}
+                  onReset={() => setPaymentResult(null)}
+                />
+              ) : null}
+              <DialogFooter>
+                {modalStep === 0 ? (
+                  <>
+                    <Button
                       type="button"
-                      onClick={() => setNewAssociateBillingType(method)}
-                      className={`rounded-md border p-2 text-xs font-medium ${newAssociateBillingType === method ? "border-teal bg-accent text-teal" : "bg-background text-muted-foreground"}`}
+                      variant="outline"
+                      onClick={() => {
+                        setFormOpen(false)
+                        setEditing(null)
+                      }}
                     >
-                      {method === "PIX" ? "Pix" : method === "BOLETO" ? "Boleto" : "Cartão"}
-                    </button>
-                  ))}
-                </div>
-                {newAssociateBillingType === "BOLETO" ? (
-                  <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">O boleto pode levar até 3 dias úteis para compensar.</p>
-                ) : null}
-              </section>
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={saving || (source === "patient" && !selectedPatient)}
+                      onClick={() => {
+                        if (form.name && !cardForm.holderName) {
+                          setCardForm((prev) => ({ ...prev, holderName: form.name.toUpperCase() }))
+                        }
+                        setModalStep(1)
+                      }}
+                    >
+                      {saving ? "Processando..." : "Continuar"}
+                    </Button>
+                  </>
+                ) : modalStep === 1 ? (
+                  <>
+                    <Button type="button" variant="outline" onClick={() => setModalStep(0)}>Voltar</Button>
+                    <Button type="button" disabled={saving} onClick={() => void save()}>
+                      {saving
+                        ? "Processando..."
+                        : newAssociateBillingType === "CREDIT_CARD"
+                        ? `Cadastrar e processar cartão (${formatMoney(rules.fee)})`
+                        : "Cadastrar e gerar cobrança"}
+                    </Button>
+                  </>
+                ) : (
+                  <Button type="button" variant="outline" onClick={() => { setFormOpen(false); setPaymentModalAssociate(null); setPaymentResult(null) }}>Concluir</Button>
+                )}
+              </DialogFooter>
             </>
           )}
-          {modalStep === 2 && paymentResult && paymentModalAssociate ? (
-            <PaymentResultPanel
-              result={paymentResult}
-              associate={paymentModalAssociate}
-              rules={rules}
-              registeringCounter={registeringCounter}
-              generatingPayment={generatingPayment}
-              onCounterPayment={() => void handleCounterPayment(paymentModalAssociate)}
-              onGenerate={(method) => void generatePaymentForAssociate(paymentModalAssociate, method)}
-              onReset={() => setPaymentResult(null)}
-            />
-          ) : null}
-          <DialogFooter>
-            {modalStep > 0 ? (
-              <Button type="button" variant="outline" onClick={() => setModalStep(modalStep - 1)}>Voltar</Button>
-            ) : null}
-            {modalStep === 0 ? (
-              <Button
-                type="button"
-                disabled={saving || (!editing && source === "patient" && !selectedPatient)}
-                onClick={() => { setModalStep(editing ? 2 : 1) }}
-              >
-                {saving ? "Processando..." : "Continuar"}
-              </Button>
-            ) : modalStep === 1 ? (
-              <Button type="button" disabled={saving} onClick={() => void save()}>
-                {saving ? "Processando..." : editing ? "Salvar alterações" : "Cadastrar e gerar cobrança"}
-              </Button>
-            ) : (
-              <Button type="button" variant="outline" onClick={() => { setFormOpen(false); setPaymentModalAssociate(null); setPaymentResult(null) }}>Concluir</Button>
-            )}
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -849,6 +1128,10 @@ function PaymentResultPanel({
   rules,
   registeringCounter,
   generatingPayment,
+  cardForm,
+  onCardFormChange,
+  cardErrors,
+  onProcessCard,
   onCounterPayment,
   onGenerate,
   onReset,
@@ -858,6 +1141,10 @@ function PaymentResultPanel({
   rules: { fee: number }
   registeringCounter: boolean
   generatingPayment: boolean
+  cardForm: CreditCardFormData
+  onCardFormChange: (updater: (prev: CreditCardFormData) => CreditCardFormData) => void
+  cardErrors: CreditCardFormErrors
+  onProcessCard: () => void
   onCounterPayment: () => void
   onGenerate: (method: BillingType) => void
   onReset: () => void
@@ -933,12 +1220,42 @@ function PaymentResultPanel({
 
         {result.billingType === "CREDIT_CARD" ? (
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">O paciente preenche os dados do cartão em página protegida da Asaas.</p>
-            {result.paymentUrl ? (
-              <Button asChild variant="outline" className="w-full">
-                <a href={result.paymentUrl} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 size-4" /> Abrir link Asaas</a>
-              </Button>
-            ) : null}
+            {result.approved ? (
+              <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 text-center">
+                <span className="mx-auto grid size-10 place-items-center rounded-xl bg-emerald-100 text-emerald-700">
+                  <CheckCircle2 className="size-5" />
+                </span>
+                <p className="text-sm font-semibold text-emerald-950">Pagamento com cartão aprovado!</p>
+                <p className="text-xs text-emerald-800">
+                  A assinatura foi processada no Asaas com sucesso e o associado agora está Ativo (Em dia).
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <CreditCardFormFields
+                  value={cardForm}
+                  onChange={onCardFormChange}
+                  errors={cardErrors}
+                  disabled={generatingPayment}
+                />
+                <Button
+                  type="button"
+                  className="w-full h-11"
+                  disabled={generatingPayment}
+                  onClick={onProcessCard}
+                >
+                  {generatingPayment ? "Processando cartão..." : `Cobrar cartão · ${formatMoney(result.value)}`}
+                </Button>
+                {result.paymentUrl ? (
+                  <p className="text-center text-xs text-muted-foreground pt-1">
+                    Ou se preferir:{" "}
+                    <a href={result.paymentUrl} target="_blank" rel="noreferrer" className="text-teal underline inline-flex items-center gap-1">
+                      Abrir link externo do Asaas <ExternalLink className="size-3" />
+                    </a>
+                  </p>
+                ) : null}
+              </div>
+            )}
           </div>
         ) : null}
 

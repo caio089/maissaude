@@ -13,41 +13,92 @@ export async function GET(request?: Request) {
   if (!db) return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
 
   try {
-    let query = db
-      .from("catalog_offers")
-      .select("id,kind,service_name,professional_id,price,duration_min")
-      .order("service_name")
+    const { data: clinicsData } = await db.from("clinics").select("id,name,address")
+    const clinicMap = new Map((clinicsData || []).map((c) => [c.id, c]))
 
-    if (request?.url) {
-      const { searchParams } = new URL(request.url)
-      const kind = searchParams.get("kind")
-      const professionalId = searchParams.get("professionalId")
+    const buildQuery = (withClinicId: boolean) => {
+      let q = db
+        .from("catalog_offers")
+        .select(
+          withClinicId
+            ? "id,kind,service_name,professional_id,price,duration_min,clinic_id"
+            : "id,kind,service_name,professional_id,price,duration_min"
+        )
+        .order("service_name")
 
-      if (kind) {
-        query = query.eq("kind", kind)
-      }
-      if (professionalId !== null && searchParams.has("professionalId")) {
-        if (professionalId === "null" || professionalId === "") {
-          query = query.is("professional_id", null)
-        } else {
-          query = query.eq("professional_id", professionalId)
+      if (request?.url) {
+        const { searchParams } = new URL(request.url)
+        const kind = searchParams.get("kind")
+        const professionalId = searchParams.get("professionalId")
+        const clinicId = searchParams.get("clinicId")
+
+        if (kind) {
+          q = q.eq("kind", kind)
+        }
+        if (professionalId !== null && searchParams.has("professionalId")) {
+          if (professionalId === "null" || professionalId === "") {
+            q = q.is("professional_id", null)
+          } else {
+            q = q.eq("professional_id", professionalId)
+          }
+        }
+        if (clinicId && withClinicId) {
+          q = q.eq("clinic_id", clinicId)
         }
       }
+      return q
     }
 
-    const { data, error } = await query
-    if (error) {
+    let queryRes = await buildQuery(true)
+    if (
+      queryRes.error &&
+      (queryRes.error.code === "42703" ||
+        queryRes.error.code === "PGRST204" ||
+        String(queryRes.error.message || "").toLowerCase().includes("clinic_id"))
+    ) {
+      // Coluna clinic_id ainda não adicionada
+      queryRes = await buildQuery(false)
+    }
+
+    if (queryRes.error) {
       return NextResponse.json({ error: "Não foi possível carregar os atendimentos." }, { status: 500 })
     }
 
-    const offers = (data || []).map((row) => ({
-      id: row.id,
-      name: row.service_name,
-      kind: row.kind,
-      professionalId: row.professional_id ?? null,
-      price: Number(row.price),
-      durationMin: row.duration_min,
-    }))
+    const offers = (queryRes.data || []).map((row: any) => {
+      let rawName = String(row.service_name || "")
+      let parsedClinicName: string | null = null
+      let parsedClinicId: string | null = row.clinic_id ?? null
+
+      // Fallback: se o nome estiver prefixado com [Nome da Clínica]
+      const prefixMatch = rawName.match(/^\[(.*?)\]\s*(.*)$/)
+      if (prefixMatch) {
+        parsedClinicName = prefixMatch[1]
+        rawName = prefixMatch[2]
+        if (!parsedClinicId) {
+          for (const [cId, cData] of clinicMap.entries()) {
+            if (cData.name.toLowerCase() === parsedClinicName.toLowerCase()) {
+              parsedClinicId = cId
+              break
+            }
+          }
+        }
+      } else if (parsedClinicId && clinicMap.has(parsedClinicId)) {
+        parsedClinicName = clinicMap.get(parsedClinicId)!.name
+      }
+
+      const offerObj: Record<string, any> = {
+        id: row.id,
+        name: rawName,
+        kind: row.kind,
+        professionalId: row.professional_id ?? null,
+        price: Number(row.price),
+        durationMin: row.duration_min,
+      }
+      if (parsedClinicId) offerObj.clinicId = parsedClinicId
+      if (parsedClinicName) offerObj.clinicName = parsedClinicName
+
+      return offerObj
+    })
 
     return NextResponse.json({ offers })
   } catch {
@@ -69,7 +120,11 @@ export async function POST(request: Request) {
   const db = createSupabaseAdmin()
   if (!db) return NextResponse.json({ error: "Banco de dados indisponível." }, { status: 503 })
   try {
-    const body = (await request.json()) as { professionalId?: string | null; services?: Service[] }
+    const body = (await request.json()) as {
+      professionalId?: string | null
+      clinicId?: string | null
+      services?: Service[]
+    }
     if (
       !Array.isArray(body.services) ||
       !body.services.length ||
@@ -99,17 +154,53 @@ export async function POST(request: Request) {
       ? body.professionalId.trim()
       : null
 
+    const clinicId = typeof body.clinicId === "string" && body.clinicId.trim().length > 0
+      ? body.clinicId.trim()
+      : null
+
+    let clinicName: string | null = null
+    if (clinicId) {
+      const { data: clinicRow } = await db.from("clinics").select("name").eq("id", clinicId).maybeSingle()
+      if (clinicRow?.name) {
+        clinicName = clinicRow.name.trim()
+      }
+    }
+
     if (!professionalId) {
-      const offers = await db.from("catalog_offers").upsert(
-        body.services.map((s) => ({
+      // Procedimentos/Exames da clínica ou de clínicas parceiras
+      const offersPayload = body.services.map((s) => {
+        const item: Record<string, any> = {
           id: s.id,
           kind: s.kind || "exame",
           service_name: s.name.trim(),
           professional_id: null,
           price: s.price,
           duration_min: s.durationMin,
-        }))
-      )
+        }
+        if (clinicId) item.clinic_id = clinicId
+        return item
+      })
+      let offers = await db.from("catalog_offers").upsert(offersPayload)
+
+      if (
+        offers.error &&
+        (offers.error.code === "42703" ||
+          offers.error.code === "PGRST204" ||
+          String(offers.error.message || "").toLowerCase().includes("clinic_id"))
+      ) {
+        // Fallback: se a coluna clinic_id ainda não existe no Postgres
+        offers = await db.from("catalog_offers").upsert(
+          body.services.map((s) => ({
+            id: s.id,
+            kind: s.kind || "exame",
+            service_name: clinicName ? `[${clinicName}] ${s.name.trim()}` : s.name.trim(),
+            professional_id: null,
+            price: s.price,
+            duration_min: s.durationMin,
+          }))
+        )
+      }
+
       if (offers.error) {
         return NextResponse.json(
           { error: "Não foi possível salvar os atendimentos no catálogo da clínica." },
@@ -160,16 +251,39 @@ export async function POST(request: Request) {
         { status: 409 }
       )
     }
-    const offers = await db.from("catalog_offers").upsert(
-      body.services.map((s) => ({
+
+    const doctorOffersPayload = body.services.map((s) => {
+      const item: Record<string, any> = {
         id: s.id,
         kind: s.kind || "consulta",
         service_name: s.name.trim(),
         professional_id: professionalId,
         price: s.price,
         duration_min: s.durationMin,
-      }))
-    )
+      }
+      if (clinicId) item.clinic_id = clinicId
+      return item
+    })
+    let offers = await db.from("catalog_offers").upsert(doctorOffersPayload)
+
+    if (
+      offers.error &&
+      (offers.error.code === "42703" ||
+        offers.error.code === "PGRST204" ||
+        String(offers.error.message || "").toLowerCase().includes("clinic_id"))
+    ) {
+      offers = await db.from("catalog_offers").upsert(
+        body.services.map((s) => ({
+          id: s.id,
+          kind: s.kind || "consulta",
+          service_name: s.name.trim(),
+          professional_id: professionalId,
+          price: s.price,
+          duration_min: s.durationMin,
+        }))
+      )
+    }
+
     if (offers.error) {
       return NextResponse.json(
         { error: "Atendimentos salvos, mas o catálogo não foi atualizado. Confira antes de tentar novamente." },

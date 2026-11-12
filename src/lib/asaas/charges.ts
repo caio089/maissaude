@@ -5,6 +5,7 @@ import { asaasEnvironment } from "@/lib/asaas/config"
 import { ensureAsaasCustomer, type EnsureAsaasCustomerInput } from "@/lib/asaas/customers"
 import { asaasBillingType, moneyValue, saoPauloDate } from "@/lib/asaas/format"
 import { minimumAsaasCharge, minimumAsaasChargeMessage } from "@/lib/asaas/minimums"
+import type { AsaasCreditCardHolderInfoInput, AsaasCreditCardInput } from "@/lib/asaas/subscriptions"
 import type { AsaasBillingType, AsaasPayment, AsaasPaymentList, AsaasPixQrCode } from "@/lib/asaas/types"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 
@@ -15,6 +16,9 @@ export type CreateAsaasChargeInput = EnsureAsaasCustomerInput & {
   description?: string
   externalReference?: string
   paymentId?: string
+  creditCard?: AsaasCreditCardInput
+  creditCardHolderInfo?: AsaasCreditCardHolderInfoInput
+  remoteIp?: string
 }
 
 export async function createAsaasCharge(input: CreateAsaasChargeInput) {
@@ -24,7 +28,6 @@ export async function createAsaasCharge(input: CreateAsaasChargeInput) {
   }
 
   const customer = await ensureAsaasCustomer(input)
-  // CREDIT_CARD sem dados do cartão gera a Fatura (invoiceUrl). Não capturamos cartão.
   const externalReference = input.externalReference || input.paymentId || input.patientId
   let payment: AsaasPayment
   try {
@@ -37,6 +40,9 @@ export async function createAsaasCharge(input: CreateAsaasChargeInput) {
         dueDate: input.dueDate || saoPauloDate(),
         description: (input.description || "Cobrança CuidarSaude").slice(0, 500),
         externalReference,
+        ...(input.creditCard ? { creditCard: input.creditCard } : {}),
+        ...(input.creditCardHolderInfo ? { creditCardHolderInfo: input.creditCardHolderInfo } : {}),
+        ...(input.remoteIp ? { remoteIp: input.remoteIp } : {}),
       }),
     })
   } catch (error) {

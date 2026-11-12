@@ -7,6 +7,25 @@ import { asaasBillingType, moneyValue, saoPauloDate } from "@/lib/asaas/format"
 import type { AsaasBillingType, AsaasPaymentList, AsaasPixQrCode, AsaasSubscription } from "@/lib/asaas/types"
 import { createSupabaseAdmin } from "@/lib/supabase/admin"
 
+export type AsaasCreditCardInput = {
+  holderName: string
+  number: string
+  expiryMonth: string
+  expiryYear: string
+  ccv: string
+}
+
+export type AsaasCreditCardHolderInfoInput = {
+  name: string
+  email: string
+  cpfCnpj: string
+  postalCode: string
+  addressNumber: string
+  addressComplement?: string
+  phone?: string
+  mobilePhone?: string
+}
+
 export type CreateAsaasSubscriptionInput = EnsureAsaasCustomerInput & {
   value: number
   billingType?: Extract<AsaasBillingType, "PIX" | "BOLETO" | "CREDIT_CARD">
@@ -14,6 +33,9 @@ export type CreateAsaasSubscriptionInput = EnsureAsaasCustomerInput & {
   associateId?: string
   externalReference?: string
   description?: string
+  creditCard?: AsaasCreditCardInput
+  creditCardHolderInfo?: AsaasCreditCardHolderInfoInput
+  remoteIp?: string
 }
 
 export async function createAsaasSubscription(input: CreateAsaasSubscriptionInput) {
@@ -33,6 +55,9 @@ export async function createAsaasSubscription(input: CreateAsaasSubscriptionInpu
       cycle: "MONTHLY",
       description: (input.description || "Mensalidade de associado CuidarSaude").slice(0, 500),
       externalReference: input.externalReference || input.associateId || input.patientId,
+      ...(input.creditCard ? { creditCard: input.creditCard } : {}),
+      ...(input.creditCardHolderInfo ? { creditCardHolderInfo: input.creditCardHolderInfo } : {}),
+      ...(input.remoteIp ? { remoteIp: input.remoteIp } : {}),
     }),
   })
 

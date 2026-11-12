@@ -7,6 +7,7 @@ import * as clinicSessionModule from "@/lib/clinic-session"
 import * as supabaseAdminModule from "@/lib/supabase/admin"
 import * as chargesModule from "@/lib/asaas/charges"
 import * as paymentLinksModule from "@/lib/asaas/payment-links"
+import * as subscriptionsModule from "@/lib/asaas/subscriptions"
 import { GET, POST, PATCH } from "@/app/api/payments/associate/route"
 
 describe("desktop associates status mapping", () => {
@@ -381,6 +382,95 @@ describe("POST /api/payments/associate", () => {
     const json = await res.json()
     expect(json.billingType).toBe("CREDIT_CARD")
     expect(json.paymentUrl).toBe("https://asaas.com/c/link_123")
+  })
+
+  it("processa cartão diretamente no domínio via checkout transparente", async () => {
+    vi.spyOn(clinicSessionModule, "hasClinicSession").mockResolvedValue(true)
+    let capturedAssociateUpdate: any = null
+    const mockAdmin = {
+      from: vi.fn((table: string) => {
+        if (table === "associate_rules") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: { fee: 35 }, error: null }),
+              }),
+            }),
+          }
+        }
+        if (table === "associates") {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+              }),
+            }),
+            upsert: vi.fn().mockResolvedValue({ error: null }),
+            update: vi.fn((payload) => {
+              capturedAssociateUpdate = payload
+              return {
+                eq: vi.fn().mockResolvedValue({ error: null }),
+              }
+            }),
+          }
+        }
+        if (table === "asaas_subscriptions") {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                not: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+                }),
+              }),
+            }),
+          }
+        }
+        return {}
+      }),
+    }
+    vi.spyOn(supabaseAdminModule, "createSupabaseAdmin").mockReturnValue(mockAdmin as any)
+    const subSpy = vi.spyOn(subscriptionsModule, "createAsaasSubscription").mockResolvedValue({
+      customer: { id: "cus_123" },
+      subscription: { id: "sub_123", status: "ACTIVE" } as any,
+      payment: { id: "pay_123" } as any,
+      pix: null,
+    })
+    const linkSpy = vi.spyOn(paymentLinksModule, "createAssociateCardPaymentLink")
+
+    const req = new Request("http://localhost/api/payments/associate", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Carlos Teste",
+        cpf: "12345678909",
+        phone: "11999999999",
+        email: "carlos@test.com",
+        billingType: "CREDIT_CARD",
+        creditCard: {
+          holderName: "CARLOS TESTE",
+          number: "4111111111111111",
+          expiryMonth: "12",
+          expiryYear: "2028",
+          ccv: "123",
+        },
+        creditCardHolderInfo: {
+          postalCode: "64000000",
+          addressNumber: "100",
+        },
+      }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.ok).toBe(true)
+    expect(json.status).toBe("active")
+    expect(json.billingType).toBe("CREDIT_CARD")
+    expect(json.paymentUrl).toBeUndefined()
+    expect(linkSpy).not.toHaveBeenCalled()
+    expect(subSpy).toHaveBeenCalled()
+    expect(capturedAssociateUpdate).toMatchObject({
+      status: "active",
+      overdue_months: 0,
+    })
   })
 })
 

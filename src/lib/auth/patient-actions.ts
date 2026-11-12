@@ -63,6 +63,7 @@ export async function identifyPatientAccount(cpfInput: string): Promise<PatientA
 export async function createPasswordForExistingPatient(input: {
   cpf: string
   password: string
+  email?: string
 }): Promise<PatientAuthResult> {
   const configError = authConfigError()
   if (configError) return configError
@@ -96,9 +97,14 @@ export async function createPasswordForExistingPatient(input: {
     .maybeSingle()
   if (patientError || !patientRow) return { ok: false, message: "Paciente ativo não encontrado para este CPF." }
   const patient = mapPatientRow(patientRow as Parameters<typeof mapPatientRow>[0])
-  const email = String(patient.email || "").trim().toLowerCase()
+  let email = String(patient.email || "").trim().toLowerCase()
   if (!EMAIL_PATTERN.test(email) || email === CLINIC_AUTH_EMAIL) {
-    return { ok: false, message: "O cadastro precisa de um e-mail válido antes de criar a senha do aplicativo." }
+    if (input.email && EMAIL_PATTERN.test(input.email.trim())) {
+      email = input.email.trim().toLowerCase()
+      await admin.from("patients").update({ email }).eq("id", patient.id)
+    } else {
+      return { ok: false, message: "O cadastro precisa de um e-mail válido antes de criar a senha do aplicativo." }
+    }
   }
 
   const { data, error } = await admin.auth.admin.createUser({

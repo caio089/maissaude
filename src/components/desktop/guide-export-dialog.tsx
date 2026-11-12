@@ -19,6 +19,7 @@ import {
   printAuthorizationGuide,
   type AuthorizationGuideInput,
 } from "@/lib/authorization-guide"
+import { DEFAULT_CLINIC_PROFILE } from "@/lib/types"
 
 export type GuideDialogItem = {
   id: string
@@ -69,7 +70,12 @@ export function GuideExportDialog({ open, onOpenChange, guide }: GuideExportDial
       patient: guide.patient
         ? { name: guide.patient.name || null, cpf: guide.patient.cpf || null, birthDate: guide.patient.birthDate || null }
         : {},
-      clinic: { name: "" },
+      clinic: {
+        name: DEFAULT_CLINIC_PROFILE.name,
+        address: DEFAULT_CLINIC_PROFILE.address,
+        city: DEFAULT_CLINIC_PROFILE.city,
+        phone: DEFAULT_CLINIC_PROFILE.phone,
+      },
       appointmentAt: guide.startsAt || guide.issuedAt,
       professional: {
         name: guide.professional || null,
@@ -79,6 +85,16 @@ export function GuideExportDialog({ open, onOpenChange, guide }: GuideExportDial
     }
     const normalizedGuideInput: AuthorizationGuideInput = {
       ...guideInput,
+      patient: {
+        ...guideInput.patient,
+        name: guideInput.patient.name?.trim() || guide.patient?.name?.trim() || null,
+      },
+      clinic: {
+        name: guideInput.clinic.name?.trim() || DEFAULT_CLINIC_PROFILE.name,
+        address: guideInput.clinic.address?.trim() || DEFAULT_CLINIC_PROFILE.address,
+        city: guideInput.clinic.city?.trim() || DEFAULT_CLINIC_PROFILE.city,
+        phone: guideInput.clinic.phone?.trim() || DEFAULT_CLINIC_PROFILE.phone,
+      },
       professional: {
         ...guideInput.professional,
         photoUrl: guideInput.professional.photoUrl ?? guide.photoUrl ?? null,
@@ -93,7 +109,7 @@ export function GuideExportDialog({ open, onOpenChange, guide }: GuideExportDial
         if (prev) URL.revokeObjectURL(prev)
         return null
       })
-      toast.error("Os dados reais da clínica e do paciente não estão disponíveis para exportar esta guia.")
+      toast.error("Os dados da clínica ou do paciente não estão disponíveis para exportar esta guia.")
       setGenerating(false)
       return
     }

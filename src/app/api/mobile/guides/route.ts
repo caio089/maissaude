@@ -31,7 +31,7 @@ export async function GET() {
     const [appointmentsResult, paymentsResult, clinicResult] = await Promise.all([
       db.from("appointments").select("id,patient_id,professional_id,service_id,starts_at,status,payment_id,notes").in("id", appointmentIds),
       db.from("payments").select("id,status,simulated,asaas_payment_id").in("id", paymentIds),
-      db.from("clinics").select("id,name,phone,address,city").limit(10),
+      db.from("clinics").select("id,name,phone,address,city").limit(100),
     ])
     if (appointmentsResult.error || paymentsResult.error) {
       return NextResponse.json({ error: "Não foi possível carregar os dados das guias." }, { status: 500 })

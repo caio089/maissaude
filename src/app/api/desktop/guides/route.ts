@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   const [appointments, payments, clinicRes] = await Promise.all([
     db.from("appointments").select("id,patient_id,professional_id,service_id,starts_at,status,payment_id,notes").in("id", appointmentIds),
     db.from("payments").select("id,status,simulated,asaas_payment_id").in("id", paymentIds),
-    db.from("clinics").select("id,name,phone,address,city").limit(10),
+    db.from("clinics").select("id,name,phone,address,city").limit(100),
   ])
   if (appointments.error || payments.error) return NextResponse.json({ error: "Não foi possível carregar os detalhes das guias." }, { status: 500 })
 
